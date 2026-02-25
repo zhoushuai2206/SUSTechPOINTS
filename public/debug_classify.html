@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Classify Debug</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; background: #f5f5f5; border-left: 4px solid #007acc; }
+        .error { background: #ffebee; border-left-color: #f44336; }
+        .success { background: #e8f5e9; border-left-color: #4caf50; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Classify Field Debug Tool</h1>
+
+    <div>
+        <button onclick="testFile('000965')">Test 000965.pcd</button>
+        <button onclick="testFile('000970')">Test 000970.pcd</button>
+        <button onclick="testFile('000975')">Test 000975.pcd</button>
+        <button onclick="testFile('000950')">Test 000950.pcd</button>
+    </div>
+
+    <div id="output"></div>
+
+    <script type="module">
+        import { PCDLoader } from './js/lib/PCDLoader.js';
+
+        window.testFile = async function(frame) {
+            const output = document.getElementById('output');
+            output.innerHTML = '<div class="section">Loading ' + frame + '.pcd...</div>';
+
+            try {
+                const loader = new PCDLoader();
+                const pcd = await loader.load('/data/example_classify/lidar/' + frame + '.pcd');
+
+                let html = '<div class="section">';
+                html += '<h3>' + frame + '.pcd - Analysis Results</h3>';
+
+                // Basic info
+                html += '<p><strong>Position:</strong> ' + (pcd.position.length / 3).toLocaleString() + ' points</p>';
+                html += '<p><strong>Intensity:</strong> ' + (pcd.intensity ? pcd.intensity.length.toLocaleString() : 'N/A') + ' values</p>';
+                html += '<p><strong>Classify:</strong> ' + (pcd.classify ? pcd.classify.length.toLocaleString() : 'N/A') + ' values</p>';
+
+                // Check for array length mismatch
+                const positionCount = pcd.position.length / 3;
+                const classifyCount = pcd.classify ? pcd.classify.length : 0;
+
+                html += '<h4>Array Length Check:</h4>';
+                if (pcd.classify && classifyCount === positionCount) {
+                    html += '<p class="success">✓ Classify array length matches position count</p>';
+                } else if (pcd.classify) {
+                    html += '<p class="error">✗ Array length mismatch! Position: ' + positionCount + ', Classify: ' + classifyCount + '</p>';
+                } else {
+                    html += '<p class="error">✗ Classify field is missing or empty!</p>';
+                }
+
+                // Show classify values
+                if (pcd.classify && pcd.classify.length > 0) {
+                    html += '<h4>Classify Values Analysis:</h4>';
+
+                    // Count unique values
+                    const counts = {};
+                    pcd.classify.forEach(v => counts[v] = (counts[v] || 0) + 1);
+                    const uniqueValues = Object.keys(counts).map(Number).sort((a, b) => a - b);
+
+                    html += '<p><strong>Unique values found:</strong> ' + uniqueValues.join(', ') + '</p>';
+                    html += '<table border="1" style="border-collapse: collapse;">';
+                    html += '<tr><th>Value</th><th>Count</th><th>Percentage</th><th>Expected Color</th></tr>';
+
+                    const colorMap = {
+                        0: 'White',
+                        1: 'Green',
+                        2: 'Red'
+                    };
+
+                    for (let val of uniqueValues) {
+                        const count = counts[val];
+                        const pct = (count / classifyCount * 100).toFixed(2);
+                        const expectedColor = val <= 2 ? colorMap[val] : (val > 20 ? 'White' : 'Gray');
+                        html += '<tr><td>' + val + '</td><td>' + count.toLocaleString() + '</td><td>' + pct + '%</td><td>' + expectedColor + '</td></tr>';
+                    }
+                    html += '</table>';
+
+                    // Sample values
+                    html += '<h4>Sample Values (first 50):</h4>';
+                    html += '<p>' + pcd.classify.slice(0, 50).join(', ') + '...</p>';
+
+                    // Check if all values are the same
+                    if (uniqueValues.length === 1) {
+                        html += '<p class="success">All classify values are: ' + uniqueValues[0] + '</p>';
+                    }
+                }
+
+                // Check object properties
+                html += '<h4>PCD Object Properties:</h4>';
+                html += '<pre>';
+                for (let key in pcd) {
+                    if (Array.isArray(pcd[key])) {
+                        html += key + ': Array(' + pcd[key].length + ')\n';
+                    } else if (typeof pcd[key] !== 'function') {
+                        html += key + ': ' + typeof pcd[key] + '\n';
+                    }
+                }
+                html += '</pre>';
+
+                html += '</div>';
+                output.innerHTML = html;
+
+                console.log('PCD data for ' + frame + ':', pcd);
+                console.log('Classify array:', pcd.classify);
+
+            } catch (error) {
+                output.innerHTML = '<div class="section error"><h3>Error:</h3><p>' + error.message + '</p><pre>' + error.stack + '</pre></div>';
+                console.error('Error:', error);
+            }
+        };
+
+        // Auto-test 000965 on load
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => testFile('000965'), 100);
+        });
+    </script>
+</body>
+</html>
