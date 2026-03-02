@@ -165,14 +165,29 @@ class Root(object):
             for i in range(len(sizes)):
                 row_size += sizes[i] * counts[i]
 
+            # Get classify field size
+            classify_size = sizes[classify_index]
+
             # Update classify values in the binary data
             data_array = bytearray(data_section)
             num_points = min(len(classify), len(data_array) // row_size)
 
             for i in range(num_points):
                 row_offset = i * row_size + classify_offset
-                if row_offset < len(data_array):
-                    data_array[row_offset] = classify[i]
+                if row_offset + classify_size <= len(data_array):
+                    # Write classify value based on its size (little-endian)
+                    if classify_size == 1:
+                        data_array[row_offset] = classify[i] & 0xFF
+                    elif classify_size == 2:
+                        # 2-byte unsigned short (little-endian)
+                        data_array[row_offset] = classify[i] & 0xFF
+                        data_array[row_offset + 1] = (classify[i] >> 8) & 0xFF
+                    elif classify_size == 4:
+                        # 4-byte unsigned int (little-endian)
+                        data_array[row_offset] = classify[i] & 0xFF
+                        data_array[row_offset + 1] = (classify[i] >> 8) & 0xFF
+                        data_array[row_offset + 2] = (classify[i] >> 16) & 0xFF
+                        data_array[row_offset + 3] = (classify[i] >> 24) & 0xFF
 
             # Write the updated PCD file using original header bytes
             with open(pcd_path, 'wb') as f:
