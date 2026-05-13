@@ -459,9 +459,6 @@ PCDLoader.prototype = {
 					if (intensity_type == "U" && intensity_size == 1){
 						intensity.push( dataview.getUint8(PCDheader.points * offset.intensity + size.intensity*i));
 					}
-					else if (intensity_type == "U" && intensity_size == 2){
-						intensity.push( dataview.getUint16(PCDheader.points * offset.intensity + size.intensity*i, this.littleEndian));
-					}
 					else if (intensity_type == "F" && intensity_size == 4){
 						intensity.push( dataview.getFloat32(PCDheader.points * offset.intensity + size.intensity*i, this.littleEndian));
 					}
@@ -470,9 +467,6 @@ PCDLoader.prototype = {
 				if (offset.classify !== undefined) {
 					if (classify_type == "U" && classify_size == 1){
 						classify.push( dataview.getUint8(PCDheader.points * offset.classify + size.classify*i));
-					}
-					else if (classify_type == "U" && classify_size == 2){
-						classify.push( dataview.getUint16(PCDheader.points * offset.classify + size.classify*i, this.littleEndian));
 					}
 					else if (classify_type == "F" && classify_size == 4){
 						classify.push( dataview.getFloat32(PCDheader.points * offset.classify + size.classify*i, this.littleEndian));
@@ -557,9 +551,6 @@ PCDLoader.prototype = {
 						if (intensity_type == "U" && intensity_size == 1){
 							intensity.push( dataview.getUint8(row + offset.intensity));
 						}
-						else if (intensity_type == "U" && intensity_size == 2){
-							intensity.push( dataview.getUint16(row + offset.intensity, this.littleEndian));
-						}
 						else if (intensity_type == "F" && intensity_size == 4){
 							intensity.push( dataview.getFloat32(row + offset.intensity, this.littleEndian));
 						}
@@ -568,9 +559,6 @@ PCDLoader.prototype = {
 					if (offset.classify !== undefined) {
 						if (classify_type == "U" && classify_size == 1){
 							classify.push( dataview.getUint8(row + offset.classify));
-						}
-						else if (classify_type == "U" && classify_size == 2){
-							classify.push( dataview.getUint16(row + offset.classify, this.littleEndian));
 						}
 						else if (classify_type == "F" && classify_size == 4){
 							classify.push( dataview.getFloat32(row + offset.classify, this.littleEndian));
