@@ -1,9 +1,5 @@
 
 import os
-import tensorflow as tf
-
-
-
 import numpy as np
 
 from . import util
@@ -11,41 +7,61 @@ import glob
 import math
 import json
 
-util.config_gpu()
+# TensorFlow / 模型加载是「可选」的：
+# 该模型是用很老版本的 Keras 训练的（含 `TensorFlowOpLayer` 这种 TF 1.x 时代的特殊层），
+# 在 TF 2.16+/Keras 3 下无法反序列化。我们把模型加载放进 try/except，
+# 加载失败时仅禁用 ML 相关接口，不影响 CherryPy 服务和主标注功能。
 
-
+NUM_POINT = 512
 RESAMPLE_NUM = 10
-
 model_file = "./algos/models/deep_annotation_inference.h5"
 
-rotation_model = tf.keras.models.load_model(model_file)
-rotation_model.summary()
+rotation_model = None
+_ml_disabled_reason = None
 
-NUM_POINT=512
+try:
+    import tensorflow as tf  # noqa: F401
+    util.config_gpu()
+    rotation_model = tf.keras.models.load_model(model_file)
+    rotation_model.summary()
+except Exception as e:  # ImportError / IOError / ValueError 等
+    _ml_disabled_reason = str(e)
+    print("[pre_annotate] 模型加载失败，自动标注/旋转预测将被禁用：", _ml_disabled_reason)
+
 
 def sample_one_obj(points, num):
     if points.shape[0] < NUM_POINT:
-        return np.concatenate([points, np.zeros((NUM_POINT-points.shape[0], 3), dtype=np.float32)], axis=0)
+        return np.concatenate([points, np.zeros((NUM_POINT - points.shape[0], 3), dtype=np.float32)], axis=0)
     else:
         idx = np.arange(points.shape[0])
         np.random.shuffle(idx)
         return points[idx[0:num]]
 
+
 def predict_yaw(points):
-    points = np.array(points).reshape((-1,3))
-    input_data = np.stack([x for x in map(lambda x: sample_one_obj(points, NUM_POINT), range(RESAMPLE_NUM))], axis=0)
+    if rotation_model is None:
+        # 模型不可用时返回 0 旋转，前端可正常处理
+        return [0, 0, 0]
+
+    points = np.array(points).reshape((-1, 3))
+    input_data = np.stack(
+        [x for x in map(lambda x: sample_one_obj(points, NUM_POINT), range(RESAMPLE_NUM))],
+        axis=0,
+    )
     pred_val = rotation_model.predict(input_data)
     pred_cls = np.argmax(pred_val, axis=-1)
     print(pred_cls)
-    
-    ret = (pred_cls[0]*3+1.5)*np.pi/180.
-    ret =[0,0,ret]
+
+    ret = (pred_cls[0] * 3 + 1.5) * np.pi / 180.
+    ret = [0, 0, ret]
     print(ret)
 
     return ret
 
-# warmup the model
-predict_yaw(np.random.random([1000,3]))
+
+# warmup the model（仅在加载成功时执行）
+if rotation_model is not None:
+    predict_yaw(np.random.random([1000, 3]))
 
 if False:
     # weights_path = "../DeepAnnotate/da_rp_weights.h5"
