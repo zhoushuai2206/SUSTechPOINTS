@@ -124,7 +124,6 @@ PCDLoader.prototype = {
 		var normal = [];
 		var color = [];
 		var intensity = [];
-		var classify = [];
 		//kitti format, xyzi
 		var offset = 0;
 
@@ -140,7 +139,6 @@ PCDLoader.prototype = {
 			color: color,
 			normal: normal,
 			intensity: intensity,
-			classify: classify,
 		};
 	},
 
@@ -268,7 +266,6 @@ PCDLoader.prototype = {
 		var color = [];
 		var velocity = [];
 		var intensity = [];
-		var classify = [];
 
 		// ascii
 
@@ -298,71 +295,59 @@ PCDLoader.prototype = {
 				intensity_size = PCDheader.size[intensity_index];
 			}
 
-			var classify_index = PCDheader.fields.findIndex(n=>n==="classify");
-			var classify_type = "U";
-			var classify_size = 1;
-
-			if (classify_index >= 0){
-				classify_type = PCDheader.type[classify_index];
-				classify_size = PCDheader.size[classify_index];
-			}
-
 			for ( var i = 0, l = lines.length; i < l; i ++ ) {
 
 				if ( lines[ i ] === '' ) continue;
 
 				var line = lines[ i ].split( ' ' );
 
-				// First, check if this point should be filtered
-				let shouldFilter = false;
 				if ( offset.x !== undefined ) {
 					var x,y,z;
 					x = parseFloat( line[ offset.x ] );
 					y = parseFloat( line[ offset.y ] );
 					z = parseFloat( line[ offset.z ] );
 
-					shouldFilter = filterPoint(x,y,z);
-
-					if (!shouldFilter) {
-						position.push( x );
-						position.push( y );
-						position.push( z );
+					if (filterPoint(x,y,z)){
+						continue;
 					}
+
+					position.push( x );
+					position.push( y );
+					position.push( z );
+
 				}
 
-				// Only process other attributes if point was not filtered
-				if (!shouldFilter) {
-					if ( offset.rgb !== undefined ) {
-						var rgb = parseFloat( line[ offset.rgb ] );
-						var r = ( rgb >> 16 ) & 0x0000ff;
-						var g = ( rgb >> 8 ) & 0x0000ff;
-						var b = ( rgb >> 0 ) & 0x0000ff;
-						color.push( r / 255, g / 255, b / 255 );
-					}
+				if ( offset.rgb !== undefined ) {
 
-					if ( offset.normal_x !== undefined ) {
-						normal.push( parseFloat( line[ offset.normal_x ] ) );
-						normal.push( parseFloat( line[ offset.normal_y ] ) );
-						normal.push( parseFloat( line[ offset.normal_z ] ) );
-					}
+					var rgb = parseFloat( line[ offset.rgb ] );
+					var r = ( rgb >> 16 ) & 0x0000ff;
+					var g = ( rgb >> 8 ) & 0x0000ff;
+					var b = ( rgb >> 0 ) & 0x0000ff;
+					color.push( r / 255, g / 255, b / 255 );
 
-					if ( offset.vx !== undefined ) {
-						var vx,vy;
-						vx = parseFloat( line[ offset.vx ] );
-						vy = parseFloat( line[ offset.vy ] );
+				}
 
-						velocity.push(vx);
-						velocity.push(vy);
-						velocity.push(0);
-					}
+				if ( offset.normal_x !== undefined ) {
 
-					if (offset.intensity !== undefined) {
-						intensity.push( parseInt( line[ offset.intensity ] ));
-					}
+					normal.push( parseFloat( line[ offset.normal_x ] ) );
+					normal.push( parseFloat( line[ offset.normal_y ] ) );
+					normal.push( parseFloat( line[ offset.normal_z ] ) );
 
-					if (offset.classify !== undefined) {
-						classify.push( parseInt( line[ offset.classify ] ));
-					}
+				}
+
+				if ( offset.vx !== undefined ) {
+					var vx,vy;
+					vx = parseFloat( line[ offset.vx ] );
+					vy = parseFloat( line[ offset.vy ] );
+
+					velocity.push(vx);
+					velocity.push(vy);
+					velocity.push(0);
+				}
+
+
+				if (offset.intensity !== undefined) {
+					intensity.push( parseInt( line[ offset.intensity ] ));
 				}
 
 			}
@@ -387,15 +372,6 @@ PCDLoader.prototype = {
 			if (intensity_index >= 0){
 				intensity_type = PCDheader.type[intensity_index];
 				intensity_size = PCDheader.size[intensity_index];
-			}
-
-			var classify_index = PCDheader.fields.findIndex(n=>n==="classify");
-			var classify_type = "U";
-			var classify_size = 1;
-
-			if (classify_index >= 0){
-				classify_type = PCDheader.type[classify_index];
-				classify_size = PCDheader.size[classify_index];
 			}
 
 			let size = {};
@@ -459,23 +435,8 @@ PCDLoader.prototype = {
 					if (intensity_type == "U" && intensity_size == 1){
 						intensity.push( dataview.getUint8(PCDheader.points * offset.intensity + size.intensity*i));
 					}
-					else if (intensity_type == "U" && intensity_size == 2){
-						intensity.push( dataview.getUint16(PCDheader.points * offset.intensity + size.intensity*i, this.littleEndian));
-					}
 					else if (intensity_type == "F" && intensity_size == 4){
 						intensity.push( dataview.getFloat32(PCDheader.points * offset.intensity + size.intensity*i, this.littleEndian));
-					}
-				}
-
-				if (offset.classify !== undefined) {
-					if (classify_type == "U" && classify_size == 1){
-						classify.push( dataview.getUint8(PCDheader.points * offset.classify + size.classify*i));
-					}
-					else if (classify_type == "U" && classify_size == 2){
-						classify.push( dataview.getUint16(PCDheader.points * offset.classify + size.classify*i, this.littleEndian));
-					}
-					else if (classify_type == "F" && classify_size == 4){
-						classify.push( dataview.getFloat32(PCDheader.points * offset.classify + size.classify*i, this.littleEndian));
 					}
 				}
 			}
@@ -495,15 +456,6 @@ PCDLoader.prototype = {
 				intensity_size = PCDheader.size[intensity_index];
 			}
 
-			var classify_index = PCDheader.fields.findIndex(n=>n==="classify");
-			var classify_type = "U";
-			var classify_size = 1;
-
-			if (classify_index >= 0){
-				classify_type = PCDheader.type[classify_index];
-				classify_size = PCDheader.size[classify_index];
-			}
-
 			let x_index = PCDheader.fields.findIndex(n=>n==="x");
 			let x_size = 4;
 			let x_type = 'F';
@@ -515,66 +467,52 @@ PCDLoader.prototype = {
 
 			for ( var i = 0, row = 0; i < PCDheader.points; i ++, row += PCDheader.rowSize ) {
 
-				// First, check if this point should be filtered
-				let shouldFilter = false;
 				if ( offset.x !== undefined ) {
-					let getFloat =  (x_size==8)? dataview.getFloat64.bind(dataview) : dataview.getFloat32.bind(dataview);
 
+					let getFloat =  (x_size==8)? dataview.getFloat64.bind(dataview) : dataview.getFloat32.bind(dataview);
+					
 					let x = getFloat( row + offset.x, this.littleEndian );
 					let y = getFloat( row + offset.y, this.littleEndian );
 					let z = getFloat( row + offset.z, this.littleEndian );
 
-					shouldFilter = filterPoint(x,y,z);
-
-					if (!shouldFilter) {
-						position.push( x );
-						position.push( y );
-						position.push( z );
+					if (filterPoint(x,y,z)){
+						continue;
 					}
+
+					position.push( x );
+					position.push( y );
+					position.push( z );
+
 				}
 
-				// Only process other attributes if point was not filtered
-				if (!shouldFilter) {
-					if ( offset.rgb !== undefined ) {
-						color.push( dataview.getUint8( row + offset.rgb + 2 ) / 255.0 );
-						color.push( dataview.getUint8( row + offset.rgb + 1 ) / 255.0 );
-						color.push( dataview.getUint8( row + offset.rgb + 0 ) / 255.0 );
-					}
+				if ( offset.rgb !== undefined ) {
 
-					if ( offset.normal_x !== undefined ) {
-						normal.push( dataview.getFloat32( row + offset.normal_x, this.littleEndian ) );
-						normal.push( dataview.getFloat32( row + offset.normal_y, this.littleEndian ) );
-						normal.push( dataview.getFloat32( row + offset.normal_z, this.littleEndian ) );
-					}
+					color.push( dataview.getUint8( row + offset.rgb + 2 ) / 255.0 );
+					color.push( dataview.getUint8( row + offset.rgb + 1 ) / 255.0 );
+					color.push( dataview.getUint8( row + offset.rgb + 0 ) / 255.0 );
 
-					if ( offset.vx !== undefined ) {
-						velocity.push( dataview.getFloat32( row + offset.vx, this.littleEndian ) );
-						velocity.push( dataview.getFloat32( row + offset.vy, this.littleEndian ) );
-						velocity.push( 0 );
-					}
+				}
 
-					if (offset.intensity !== undefined) {
-						if (intensity_type == "U" && intensity_size == 1){
-							intensity.push( dataview.getUint8(row + offset.intensity));
-						}
-						else if (intensity_type == "U" && intensity_size == 2){
-							intensity.push( dataview.getUint16(row + offset.intensity, this.littleEndian));
-						}
-						else if (intensity_type == "F" && intensity_size == 4){
-							intensity.push( dataview.getFloat32(row + offset.intensity, this.littleEndian));
-						}
-					}
+				if ( offset.normal_x !== undefined ) {
 
-					if (offset.classify !== undefined) {
-						if (classify_type == "U" && classify_size == 1){
-							classify.push( dataview.getUint8(row + offset.classify));
-						}
-						else if (classify_type == "U" && classify_size == 2){
-							classify.push( dataview.getUint16(row + offset.classify, this.littleEndian));
-						}
-						else if (classify_type == "F" && classify_size == 4){
-							classify.push( dataview.getFloat32(row + offset.classify, this.littleEndian));
-						}
+					normal.push( dataview.getFloat32( row + offset.normal_x, this.littleEndian ) );
+					normal.push( dataview.getFloat32( row + offset.normal_y, this.littleEndian ) );
+					normal.push( dataview.getFloat32( row + offset.normal_z, this.littleEndian ) );
+
+				}
+
+				if ( offset.vx !== undefined ) {
+					velocity.push( dataview.getFloat32( row + offset.vx, this.littleEndian ) );
+					velocity.push( dataview.getFloat32( row + offset.vy, this.littleEndian ) );
+					velocity.push( 0 );
+				}
+
+				if (offset.intensity !== undefined) {
+					if (intensity_type == "U" && intensity_size == 1){
+						intensity.push( dataview.getUint8(row + offset.intensity));
+					}
+					else if (intensity_type == "F" && intensity_size == 4){
+						intensity.push( dataview.getFloat32(row + offset.intensity, this.littleEndian));
 					}
 				}
 			}
@@ -587,7 +525,6 @@ PCDLoader.prototype = {
 			normal: normal,
 			velocity: velocity,
 			intensity: intensity,
-			classify: classify,
 		};
 		
 	}

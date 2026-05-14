@@ -9,48 +9,6 @@ window.pointsGlobalConfig = pointsGlobalConfig;
 
 pointsGlobalConfig.load();
 
-// Global classify configuration
-let classifyConfig = null;
-window.getClassifyConfig = async function() {
-    if (classifyConfig) return classifyConfig;
-
-    try {
-        const response = await fetch('/static/config/classify_config.json');
-        classifyConfig = await response.json();
-        window.classifyConfig = classifyConfig;
-        return classifyConfig;
-    } catch (e) {
-        console.warn('Failed to load classify_config.json, using defaults:', e);
-        // Default fallback
-        classifyConfig = {
-            classify_classes: [
-                { value: 0, name: "未分类", color: [1.0, 1.0, 1.0] },
-                { value: 1, name: "地面", color: [0.0, 1.0, 0.0] },
-                { value: 2, name: "障碍物", color: [1.0, 0.0, 0.0] },
-                { value: 3, name: "大车", color: [0.0, 0.0, 1.0] },
-                { value: 4, name: "小车", color: [0.0, 1.0, 1.0] },
-                { value: 5, name: "VRU", color: [1.0, 0.0, 1.0] },
-                { value: 6, name: "行人", color: [1.0, 0.5, 0.0] }
-            ]
-        };
-        window.classifyConfig = classifyConfig;
-        return classifyConfig;
-    }
-};
-
-// Get classify colors as a simple map {value: [r, g, b]}
-window.getClassifyColors = function() {
-    if (!classifyConfig) return null;
-    const colors = {};
-    for (const cls of classifyConfig.classify_classes) {
-        colors[cls.value] = cls.color;
-    }
-    return colors;
-};
-
-// Preload classify config
-window.getClassifyConfig();
-
 
 document.documentElement.className="theme-"+pointsGlobalConfig.theme;
 

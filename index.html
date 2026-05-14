@@ -105,86 +105,7 @@
 												
 					<!-- div id="image"></div -->
 					<div id="floating-things">
-						<div id="floating-labels" class="non-selectable"></div>
-
-						<!-- Classify Mode Floating Panel -->
-						<div id="classify-panel" style="display: none;">
-							<!-- Drag Handle -->
-							<div class="classify-panel-header" id="classify-panel-header">
-								<span>Classify Mode</span>
-								<div id="classify-close-btn" class="classify-close-btn" title="Exit Classify Mode">
-									<svg viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" focusable="false">
-										<path d="M4 4 L 20 20 M 20 4 L 4 20"></path>
-									</svg>
-								</div>
-							</div>
-
-							<!-- Top Row: Action Buttons -->
-							<div class="classify-panel-row classify-panel-buttons">
-								<button id="classify-undo-btn" class="classify-btn-small" title="撤销">撤销</button>
-								<button id="classify-clear-btn" class="classify-btn-small" title="清除">清除</button>
-								<button id="classify-save-btn" class="classify-btn-small" title="保存">保存</button>
-							</div>
-
-							<!-- Classify Options as Radio Buttons -->
-							<div class="classify-options-container" id="classify-options">
-								<!-- Row 1: 未分类 (full width) -->
-								<label class="classify-radio-item classify-radio-full">
-									<input type="radio" name="classify-value" value="0" checked>
-									<span class="classify-radio-label">未分类</span>
-									<span class="classify-radio-color" style="background-color: rgb(255, 255, 255);"></span>
-								</label>
-								<!-- Row 2-4: 3 columns -->
-								<label class="classify-radio-item">
-									<input type="radio" name="classify-value" value="1">
-									<span class="classify-radio-label">地面</span>
-									<span class="classify-radio-color" style="background-color: rgb(0, 255, 0);"></span>
-								</label>
-								<label class="classify-radio-item">
-									<input type="radio" name="classify-value" value="2">
-									<span class="classify-radio-label">障碍物</span>
-									<span class="classify-radio-color" style="background-color: rgb(255, 0, 0);"></span>
-								</label>
-								<label class="classify-radio-item">
-									<input type="radio" name="classify-value" value="3">
-									<span class="classify-radio-label">大车</span>
-									<span class="classify-radio-color" style="background-color: rgb(0, 0, 255);"></span>
-								</label>
-								<label class="classify-radio-item">
-									<input type="radio" name="classify-value" value="4">
-									<span class="classify-radio-label">小车</span>
-									<span class="classify-radio-color" style="background-color: rgb(0, 255, 255);"></span>
-								</label>
-								<label class="classify-radio-item">
-									<input type="radio" name="classify-value" value="5">
-									<span class="classify-radio-label">VRU</span>
-									<span class="classify-radio-color" style="background-color: rgb(255, 0, 255);"></span>
-								</label>
-								<label class="classify-radio-item">
-									<input type="radio" name="classify-value" value="6">
-									<span class="classify-radio-label">行人</span>
-									<span class="classify-radio-color" style="background-color: rgb(255, 128, 0);"></span>
-								</label>
-							</div>
-
-							<!-- Bottom Row: Select and Apply -->
-							<div class="classify-panel-row">
-								<!-- Left: Select Points checkbox + Selected count -->
-								<div class="classify-panel-left">
-									<label class="classify-panel-item">
-										<span>Select</span>
-										<input type="checkbox" id="classify-select-points" class="classify-checkbox">
-										<span class="classify-info">(<span id="classify-selected-count">0</span>)</span>
-									</label>
-								</div>
-
-								<!-- Right: Apply Button -->
-								<div class="classify-panel-right">
-									<button id="classify-apply-btn" class="classify-btn">Apply</button>
-								</div>
-							</div>
-						</div>
-
+						<div id="floating-labels" class="non-selectable"></div>				
 						<div id="obj-editor">
 							
 							<div class="obj-editor-row">
@@ -849,8 +770,7 @@
 								<div class="cfg-widget-group">
 									<select type="checkbox" id="cfg-color-points-select" class="cfg-widget">
 										<option value="mono" selected>mono</option>
-										<option value="intensity" selected>by intensity</option>
-										<option value="classify" selected>by classify</option>
+										<option value="intensity" selected>by intensity</option>									
 									</select>
 								</div>
 							</div>
@@ -990,18 +910,7 @@
 							<div class="menu-item" id="cfg-help">
 								<a href="https://github.com/naurril/SUSTechPOINTS/blob/dev-auto-annotate/README_guide.md" target="_blank">Help</a>
 							</div>
-
-							<!-- ========== Classify Mode Toggle ========== -->
-							<div class="menu-item menu-seperator"></div>
-
-							<!-- Classify Mode Toggle -->
-							<div class="menu-nonclickable-item" id="cfg-classify-mode">
-								<span>Classify Mode</span>
-								<div class="cfg-widget-group">
-									<input type="checkbox" id="cfg-classify-mode-checkbox" class="cfg-widget">
-								</div>
-							</div>
-						</div>
+						</div>					
 					</div>
 
 				<!-- div id="projective-view-context-menu">
@@ -1011,45 +920,8 @@
 						<div class="menu-item-text">Delete</div>
 					</div>
 
-					<div class="menu-item menu-seperator"></div>
-				</div> -->
-
-				<!-- Classify Context Menu (only shown in Classify Mode) -->
-				<div id="classify-context-menu" style="display: none;">
-					<div class="menu-item" id="cm-classify-0">
-						<div class="menu-item-icon" style="background: rgb(255, 255, 255); border: 1px solid #ccc;"></div>
-						<div class="menu-item-text">0 - 未分类</div>
-					</div>
-					<div class="menu-item" id="cm-classify-1">
-						<div class="menu-item-icon" style="background: rgb(0, 255, 0);"></div>
-						<div class="menu-item-text">1 - 地面</div>
-					</div>
-					<div class="menu-item" id="cm-classify-2">
-						<div class="menu-item-icon" style="background: rgb(255, 0, 0);"></div>
-						<div class="menu-item-text">2 - 障碍物</div>
-					</div>
-					<div class="menu-item" id="cm-classify-3">
-						<div class="menu-item-icon" style="background: rgb(255, 255, 0);"></div>
-						<div class="menu-item-text">3 - 车辆</div>
-					</div>
-					<div class="menu-item" id="cm-classify-4">
-						<div class="menu-item-icon" style="background: rgb(0, 0, 255);"></div>
-						<div class="menu-item-text">4 - 行人</div>
-					</div>
-					<div class="menu-item" id="cm-classify-5">
-						<div class="menu-item-icon" style="background: rgb(0, 255, 255);"></div>
-						<div class="menu-item-text">5 - 植被</div>
-					</div>
-					<div class="menu-item" id="cm-classify-6">
-						<div class="menu-item-icon" style="background: rgb(255, 128, 0);"></div>
-						<div class="menu-item-text">6 - 建筑物</div>
-					</div>
-					<div class="menu-item" id="cm-classify-7">
-						<div class="menu-item-icon" style="background: rgb(255, 0, 255);"></div>
-						<div class="menu-item-text">7 - 道路标识</div>
-					</div>
-				</div>
-
+					<div class="menu-item menu-seperator"></div>				
+				</div -->
 				<div id="object-track-wrapper" class="popup-window-wrapper" tabindex="-1">
 					<div id="view" class="non-selectable">
 						<div id="header">

@@ -1288,14 +1288,6 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
     this.handleRightClick= function(event){
 
-        // Check if Classify Mode is active
-        const classifyModeCheckbox = document.getElementById('cfg-classify-mode-checkbox');
-        if (classifyModeCheckbox && classifyModeCheckbox.checked) {
-            // Let ClassifyAnnotator handle all right-clicks in Classify Mode
-            // It will only show the menu when there are selected points
-            return;
-        }
-
         // select new object
 
         if (!this.data.world){
@@ -2316,14 +2308,9 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         this.update_frame_info(world.frameInfo.scene, world.frameInfo.frame);
 
         this.select_locked_object();
-
+        
         //load_obj_ids_of_scene(world.frameInfo.scene);
         objIdManager.setCurrentScene(world.frameInfo.scene);
-
-        // Initialize classify annotator for the world's lidar
-        if (world.lidar && this.viewManager.mainView) {
-            world.lidar.initClassifyAnnotator(this.viewManager.mainView, this.data.cfg);
-        }
 
         // preload after the first world loaded
         // otherwise the loading of the first world would be too slow

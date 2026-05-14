@@ -33,9 +33,6 @@ from algos import pre_annotate
 class Root(object):
     @cherrypy.expose
     def index(self, scene="", frame=""):
-      cherrypy.response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-      cherrypy.response.headers['Pragma'] = 'no-cache'
-      cherrypy.response.headers['Expires'] = '0'
       tmpl = env.get_template('index.html')
       return tmpl.render()
   
@@ -85,122 +82,6 @@ class Root(object):
           json.dump(ann, f, indent=2, sort_keys=True)
 
       return "ok"
-
-
-    @cherrypy.expose
-    @cherrypy.tools.json_out()
-    def save_classify_pcd(self):
-        """Save PCD file with updated classify values"""
-        rawbody = cherrypy.request.body.readline().decode('UTF-8')
-        data = json.loads(rawbody)
-
-        scene = data.get("scene")
-        frame = data.get("frame")
-        classify = data.get("classify")
-
-        if not scene or not frame or classify is None:
-            return {"status": "error", "error": "Missing required parameters"}
-
-        try:
-            pcd_path = f"./data/{scene}/lidar/{frame}.pcd"
-
-            # Read the original PCD file
-            with open(pcd_path, 'rb') as f:
-                content = f.read()
-
-            # Find the end of header (DATA line)
-            header_end = content.find(b'DATA') + 5
-            while content[header_end] != 10:  # Find newline after DATA
-                header_end += 1
-            header_end += 1  # Skip the newline
-
-            header_bytes = content[:header_end]
-            header = header_bytes.decode('utf-8', errors='ignore')
-            data_section = content[header_end:]
-
-            # Parse the header to get field information
-            lines = header.split('\n')
-            fields_line = None
-            points_line = None
-            sizes = []
-            counts = []
-
-            for line in lines:
-                if line.startswith('FIELDS'):
-                    fields_line = line
-                elif line.startswith('POINTS'):
-                    points_line = line
-                elif line.startswith('SIZE'):
-                    sizes = list(map(int, line.split()[1:]))
-                elif line.startswith('COUNT'):
-                    counts = list(map(int, line.split()[1:]))
-
-            if not fields_line or not points_line or not sizes:
-                return {"status": "error", "error": "Invalid PCD header"}
-
-            # Default counts to 1 if not specified
-            if not counts:
-                counts = [1] * len(sizes)
-
-            # Check if classify field exists
-            fields = fields_line.split()[1:]
-            classify_index = None
-
-            for i, field in enumerate(fields):
-                if field == 'classify':
-                    classify_index = i
-                    break
-
-            if classify_index is None:
-                return {"status": "error", "error": "PCD file has no classify field"}
-
-            # Calculate offset of classify field within each row
-            # Offset = sum(size[i] * count[i]) for all fields before classify_index
-            classify_offset = 0
-            for i in range(classify_index):
-                classify_offset += sizes[i] * counts[i]
-
-            # Calculate row size = sum(size[i] * count[i]) for all fields
-            row_size = 0
-            for i in range(len(sizes)):
-                row_size += sizes[i] * counts[i]
-
-            # Get classify field size
-            classify_size = sizes[classify_index]
-
-            # Update classify values in the binary data
-            data_array = bytearray(data_section)
-            num_points = min(len(classify), len(data_array) // row_size)
-
-            for i in range(num_points):
-                row_offset = i * row_size + classify_offset
-                if row_offset + classify_size <= len(data_array):
-                    # Write classify value based on its size (little-endian)
-                    if classify_size == 1:
-                        data_array[row_offset] = classify[i] & 0xFF
-                    elif classify_size == 2:
-                        # 2-byte unsigned short (little-endian)
-                        data_array[row_offset] = classify[i] & 0xFF
-                        data_array[row_offset + 1] = (classify[i] >> 8) & 0xFF
-                    elif classify_size == 4:
-                        # 4-byte unsigned int (little-endian)
-                        data_array[row_offset] = classify[i] & 0xFF
-                        data_array[row_offset + 1] = (classify[i] >> 8) & 0xFF
-                        data_array[row_offset + 2] = (classify[i] >> 16) & 0xFF
-                        data_array[row_offset + 3] = (classify[i] >> 24) & 0xFF
-
-            # Write the updated PCD file using original header bytes
-            with open(pcd_path, 'wb') as f:
-                f.write(header_bytes)
-                f.write(bytes(data_array))
-
-            print(f"Saved classify data to {pcd_path} ({num_points} points)")
-
-            return {"status": "ok", "points": num_points}
-
-        except Exception as e:
-            print(f"Error saving classify data: {e}")
-            return {"status": "error", "error": str(e)}
 
 
     @cherrypy.expose

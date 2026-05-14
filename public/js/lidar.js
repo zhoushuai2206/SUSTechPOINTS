@@ -3,13 +3,14 @@ import * as THREE from './lib/three.module.js';
 import { matmul, euler_angle_to_rotate_matrix, transpose, psr_to_xyz, array_as_vector_range, array_as_vector_index_range, vector_range, euler_angle_to_rotate_matrix_3by3} from "./util.js"
 import { PCDLoader } from './lib/PCDLoader.js';
 import {globalObjectCategory} from './obj_cfg.js';
+
+
 import {settings} from "./settings.js"
-import { ClassifyAnnotator } from './classify_annotator.js';
 
 function Lidar(sceneMeta, world, frameInfo){
     this.world = world;
     this.data = world.data;
-    this.frameInfo = frameInfo;
+    this.frameInfo = frameInfo;    
     this.sceneMeta = sceneMeta;
 
     this.points = null;
@@ -20,7 +21,6 @@ function Lidar(sceneMeta, world, frameInfo){
         let color = [];
         let normal = [];
         let intensity = [];
-        let classify = [];
         //3, 3, 3, 1
 
         for (let i = 0; i < pcd.position.length/3; i++){
@@ -28,7 +28,7 @@ function Lidar(sceneMeta, world, frameInfo){
                 position.push(pcd.position[i*3+0]);
                 position.push(pcd.position[i*3+1]);
                 position.push(pcd.position[i*3+2]);
-
+                
                 if (pcd.color.length>0){
                     color.push(pcd.color[i*3+0]);
                     color.push(pcd.color[i*3+1]);
@@ -44,10 +44,6 @@ function Lidar(sceneMeta, world, frameInfo){
                 if (pcd.intensity){
                     intensity.push(pcd.intensity[i]);
                 }
-
-                if (pcd.classify){
-                    classify.push(pcd.classify[i]);
-                }
             }
         }
 
@@ -55,7 +51,6 @@ function Lidar(sceneMeta, world, frameInfo){
         pcd.intensity = intensity;
         pcd.color = color;
         pcd.normal = normal;
-        pcd.classify = classify;
 
         return pcd;
     };
@@ -134,50 +129,16 @@ function Lidar(sceneMeta, world, frameInfo){
                         for (var i =0; i< pcd.intensity.length; ++i){
                             let intensity = pcd.intensity[i];
                             intensity *= 8;
-
+                            
                             if (intensity > 1)
                                 intensity = 1.0;
-
-
+                            
+                            
                             //color.push( 2 * Math.abs(0.5-intensity));
-
+                            
                             color[i*3] =  intensity;
                             color[i*3+1] = intensity;
-                            color[i*3+2] = 1 - intensity;
-                        }
-                    }
-                    // if enabled classify we color points by classify value
-                    else if (_self.data.cfg.color_points=="classify" && pcd.classify && pcd.classify.length>0){
-                        // Get classify colors from global config (loaded from classify_config.json)
-                        let classifyColors = window.getClassifyColors ? window.getClassifyColors() : null;
-
-                        // Fallback to default colors if config not loaded
-                        if (!classifyColors) {
-                            classifyColors = {
-                                0: [1.0, 1.0, 1.0],     // 未分类 - white
-                                1: [0.0, 1.0, 0.0],     // 地面 - green
-                                2: [1.0, 0.0, 0.0],     // 障碍物 - red
-                                3: [0.0, 0.0, 1.0],     // 大车 - blue
-                                4: [0.0, 1.0, 1.0],     // 小车 - cyan
-                                5: [1.0, 0.0, 1.0],     // VRU - magenta
-                                6: [1.0, 0.5, 0.0]      // 行人 - orange
-                            };
-                        }
-
-                        for (var i =0; i< pcd.classify.length; ++i){
-                            let classify = pcd.classify[i];
-                            let classifyColor = classifyColors[classify];
-
-                            if (classifyColor) {
-                                color[i*3]   = classifyColor[0];
-                                color[i*3+1] = classifyColor[1];
-                                color[i*3+2] = classifyColor[2];
-                            } else {
-                                // default (gray) for unknown values
-                                color[i*3] =  _self.data.cfg.point_brightness;
-                                color[i*3+1] = _self.data.cfg.point_brightness;
-                                color[i*3+2] = _self.data.cfg.point_brightness;
-                            }
+                            color[i*3+2] = 1 - intensity; 
                         }
                     }
 
@@ -224,13 +185,6 @@ function Lidar(sceneMeta, world, frameInfo){
                 _self.points_load_time = new Date().getTime();
 
                 console.log(_self.points_load_time, _self.frameInfo.scene, _self.frameInfo.frame, "loaded pionts ", _self.points_load_time - _self.create_time, "ms");
-
-                // Reset classify annotator state when new point cloud is loaded
-                if (_self.classifyAnnotator) {
-                    _self.classifyAnnotator.resetState().catch(err => {
-                        console.error('Error resetting ClassifyAnnotator state:', err);
-                    });
-                }
 
                 _self._afterPreload();
             },
@@ -348,109 +302,36 @@ function Lidar(sceneMeta, world, frameInfo){
     this.color_points=function(){
         // color all points inside these boxes
         let color = this.points.geometry.getAttribute("color").array;
-        let geometry = this.points.geometry;
-
-        // Get the actual number of points in the current geometry
-        let numPoints = color.length / 3;
-
-        // Check if geometry has its own classify attribute (filtered case)
-        let geometryClassify = geometry.getAttribute("classify");
 
         // step 1, color all points.
-        if (this.data.cfg.color_points=="intensity" && this.pcd.intensity && this.pcd.intensity.length>0){
-            // by intensity - use geometry's intensity if available
-            let intensityArray = geometry.getAttribute("intensity");
-            if (intensityArray) {
-                // Filtered case: use geometry's intensity
-                for (var i = 0; i < numPoints; ++i){
-                    let intensity = intensityArray.array[i];
-                    intensity *= 8;
-                    if (intensity > 1) intensity = 1.0;
-
-                    color[i*3] = intensity;
-                    color[i*3+1] = intensity;
-                    color[i*3+2] = 1 - intensity;
-                }
-            } else {
-                // Unfiltered case: use pcd.intensity
-                for (var i = 0; i < this.pcd.intensity.length && i < numPoints; ++i){
-                    let intensity = this.pcd.intensity[i];
-                    intensity *= 8;
-                    if (intensity > 1) intensity = 1.0;
-
-                    color[i*3] = intensity;
-                    color[i*3+1] = intensity;
-                    color[i*3+2] = 1 - intensity;
-                }
-            }
-        }
-        else if (this.data.cfg.color_points=="classify" && ((geometryClassify && geometryClassify.array.length > 0) || (this.pcd.classify && this.pcd.classify.length>0))){
-            // Get classify colors from global config (loaded from classify_config.json)
-            let classifyColors = window.getClassifyColors ? window.getClassifyColors() : null;
-
-            // Fallback to default colors if config not loaded
-            if (!classifyColors) {
-                classifyColors = {
-                    0: [1.0, 1.0, 1.0],     // 未分类 - white
-                    1: [0.0, 1.0, 0.0],     // 地面 - green
-                    2: [1.0, 0.0, 0.0],     // 障碍物 - red
-                    3: [0.0, 0.0, 1.0],     // 大车 - blue
-                    4: [0.0, 1.0, 1.0],     // 小车 - cyan
-                    5: [1.0, 0.0, 1.0],     // VRU - magenta
-                    6: [1.0, 0.5, 0.0]      // 行人 - orange
-                };
-            }
-
-            if (geometryClassify && geometryClassify.array.length > 0) {
-                // Filtered case: use geometry's classify attribute
-                for (var i = 0; i < numPoints; ++i){
-                    let classify = geometryClassify.array[i];
-                    let classifyColor = classifyColors[classify];
-
-                    if (classifyColor) {
-                        color[i*3]   = classifyColor[0];
-                        color[i*3+1] = classifyColor[1];
-                        color[i*3+2] = classifyColor[2];
-                    } else {
-                        color[i*3] =  this.data.cfg.point_brightness;
-                        color[i*3+1] = this.data.cfg.point_brightness;
-                        color[i*3+2] = this.data.cfg.point_brightness;
-                    }
-                }
-            } else {
-                // Unfiltered case: use pcd.classify
-                for (var i = 0; i < this.pcd.classify.length && i < numPoints; ++i){
-                    let classify = this.pcd.classify[i];
-                    let classifyColor = classifyColors[classify];
-
-                    if (classifyColor) {
-                        color[i*3]   = classifyColor[0];
-                        color[i*3+1] = classifyColor[1];
-                        color[i*3+2] = classifyColor[2];
-                    } else {
-                        color[i*3] =  this.data.cfg.point_brightness;
-                        color[i*3+1] = this.data.cfg.point_brightness;
-                        color[i*3+2] = this.data.cfg.point_brightness;
-                    }
-                }
+        if (this.data.cfg.color_points=="intensity" && this.pcd.intensity.length>0){
+            // by intensity
+            for (var i =0; i< this.pcd.intensity.length; ++i){
+                let intensity = this.pcd.intensity[i];
+                intensity *= 8;
+                
+                if (intensity > 1)
+                    intensity = 1.0;
+                
+                
+                //color.push( 2 * Math.abs(0.5-intensity));
+                
+                color[i*3] =  intensity;
+                color[i*3+1] = intensity;
+                color[i*3+2] = 1 - intensity; 
             }
         }
         else
         {
-            // mono color or classify mode failed
-            for (let i = 0; i < numPoints; ++i){
-                color[i*3] = this.data.cfg.point_brightness;
-                color[i*3+1] = this.data.cfg.point_brightness;
-                color[i*3+2] = this.data.cfg.point_brightness;
+            // mono color
+            for (let i =0; i< this.pcd.position.length; ++i){                                
+                color[i] = this.data.cfg.point_brightness;
             }
         }
 
-        // Mark color attribute as needing update
-        this.points.geometry.getAttribute("color").needsUpdate = true;
-
         // step 2 color objects
         this.color_objects();
-
+        
         //this.update_points_color();
     };
 
@@ -1543,93 +1424,6 @@ function Lidar(sceneMeta, world, frameInfo){
         scale.z += 0.02;
 
         return this.world.annotation.add_box(center, scale, {x:0,y:0,z:rotation_z}, "Unknown", "");
-    };
-
-    // ========== Classify Annotation Methods ==========
-
-    // Initialize the classify annotator
-    this.initClassifyAnnotator = function(view, config) {
-        console.log('initClassifyAnnotator called for frame:', this.frameInfo.frame);
-        console.log('  - classifyAnnotator exists:', this.classifyAnnotator ? 'yes' : 'no');
-        console.log('  - points exists:', this.points ? 'yes' : 'no');
-        if (this.points) {
-            console.log('  - points.geometry vertex count:', this.points.geometry.attributes.position.count);
-        }
-
-        if (!this.classifyAnnotator) {
-            console.log('  - Creating new ClassifyAnnotator');
-            this.classifyAnnotator = new ClassifyAnnotator(this, view, config);
-        } else if (this.points) {
-            // If annotator already exists and points are loaded, reset state
-            // This handles the case where we switch back to a previously loaded frame
-            console.log('  - Calling resetState on existing ClassifyAnnotator');
-            this.classifyAnnotator.resetState().catch(err => {
-                console.error('Error resetting ClassifyAnnotator state:', err);
-            });
-        }
-    };
-
-    // Get the current point cloud data with classify field
-    this.getPCDWithClassify = function() {
-        return this.pcd;
-    };
-
-    // Update points classify values
-    this.updatePointsClassify = function(indices, classifyValue) {
-        if (!this.pcd || !this.pcd.classify) {
-            console.warn('PCD data has no classify field');
-            return;
-        }
-
-        for (let idx of indices) {
-            if (idx >= 0 && idx < this.pcd.classify.length) {
-                this.pcd.classify[idx] = classifyValue;
-            }
-        }
-
-        // Re-color the points
-        this.color_points();
-    };
-
-    // Save PCD file with updated classify values
-    this.savePCDWithClassify = function() {
-        if (!this.pcd || !this.pcd.classify) {
-            console.warn('No PCD data or classify field to save');
-            return;
-        }
-
-        const scene = this.frameInfo.scene;
-        const frame = this.frameInfo.frame;
-
-        // Prepare data for saving
-        const data = {
-            scene: scene,
-            frame: frame,
-            position: this.pcd.position,
-            intensity: this.pcd.intensity,
-            classify: this.pcd.classify,
-            timestamp: new Date().toISOString()
-        };
-
-        // Send to server
-        fetch('/save_classify_pcd', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-        })
-        .then(response => response.json())
-        .then(result => {
-            if (result.status === 'ok') {
-                console.log('PCD file with classify data saved successfully');
-            } else {
-                console.error('Failed to save PCD file:', result.error);
-            }
-        })
-        .catch(error => {
-            console.error('Error saving PCD file:', error);
-        });
     };
 
 }

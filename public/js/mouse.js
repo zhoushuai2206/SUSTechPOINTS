@@ -79,7 +79,7 @@ function Mouse(view, op_state, mainui_container, parentUi, on_left_click, on_rig
     };
 
 
-    this.onMouseDown=function( event ) {
+    this.onMouseDown=function( event ) {    
 
         in_select_mode = false;
 
@@ -92,11 +92,11 @@ function Mouse(view, op_state, mainui_container, parentUi, on_left_click, on_rig
                 event.preventDefault();
 
                 in_select_mode = true;
-
+            
                 select_start_pos={
                     x: event.offsetX,
                     y: event.offsetY,
-                }
+                }            
             }
         }
 
@@ -183,8 +183,8 @@ function Mouse(view, op_state, mainui_container, parentUi, on_left_click, on_rig
 
         if (in_select_mode){
             in_select_mode = false;
-
-
+            
+            
             var sbox = this.parentUi.querySelector("#select-box");
             sbox.style.display="none";
 

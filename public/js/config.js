@@ -12,11 +12,11 @@ class Config{
 
     coordinateSystem = 'utm';
 
-    point_size = 3;
+    point_size = 1;
     point_brightness = 0.6;
     box_opacity = 1;
     show_background = true;
-    color_obj = "no";
+    color_obj = "category";
     theme = "dark";
 
     enableFilterPoints = false;
