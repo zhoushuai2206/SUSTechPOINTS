@@ -1048,7 +1048,7 @@ td {
 #log-wrapper {
 	width: 0%;
 	height: 0%;
-	display: inherit;
+	display: none;
 }
 
 #log-wrapper #view {
