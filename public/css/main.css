@@ -40,6 +40,13 @@ html,body {
 	overflow-y: hidden;
 }
 
+/* Fix Chrome 137+ customizable select dropdown positioning issue */
+select {
+	appearance: auto;
+	-webkit-appearance: menulist;
+	-moz-appearance: menulist;
+}
+
 
 
 .red {
