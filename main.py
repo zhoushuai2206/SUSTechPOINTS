@@ -13,6 +13,16 @@ import scene_reader
 from tools import check_labels  as check
 
 
+def _set_no_cache_headers():
+    """禁止浏览器缓存静态资源/接口响应，避免前端拿到旧 JS 造成路径不一致。"""
+    cherrypy.response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    cherrypy.response.headers['Pragma'] = 'no-cache'
+    cherrypy.response.headers['Expires'] = '0'
+
+
+cherrypy.tools.no_cache = cherrypy.Tool('before_finalize', _set_no_cache_headers)
+
+
 # BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # sys.path.append(BASE_DIR)
 

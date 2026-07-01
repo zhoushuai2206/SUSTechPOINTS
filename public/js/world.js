@@ -33,7 +33,9 @@ function FrameInfo(data, sceneMeta, sceneName, frame){
 
         
     this.get_pcd_path = function(){
-            return 'data/'+ this.scene + "/lidar/" + this.frame + this.sceneMeta.lidar_ext;
+            // 兼容字段：lidar_dir 优先（新数据 rslidar_points），缺省回退到 "lidar"
+            var lidarDir = this.sceneMeta.lidar_dir || "lidar";
+            return 'data/'+ this.scene + "/" + lidarDir + "/" + this.frame + this.sceneMeta.lidar_ext;
         };
     this.get_radar_path = function(name){
         return `data/${this.scene}/radar/${name}/${this.frame}${this.sceneMeta.radar_ext}`;
@@ -195,8 +197,12 @@ function Images(sceneMeta, sceneName, frame){
                     _self.on_image_loaded();
                 };
 
-                _self.content[cam].src = 'data/'+sceneName+'/camera/' + cam + '/'+ frame + sceneMeta.camera_ext;
-                console.log("image set")
+                // 路径拼装：新数据为 camera_<name>_color/<frame>.jpg；
+                // 若 sceneMeta 提供了 camera_dir_prefix / camera_dir_suffix 则按其拼装。
+                var dirPrefix = (sceneMeta.camera_dir_prefix !== undefined) ? sceneMeta.camera_dir_prefix : "camera/";
+                var dirSuffix = (sceneMeta.camera_dir_suffix !== undefined) ? sceneMeta.camera_dir_suffix : "";
+                _self.content[cam].src = 'data/'+ sceneName + '/' + dirPrefix + cam + dirSuffix + '/'+ frame + sceneMeta.camera_ext;
+                console.log("image set", _self.content[cam].src);
             });
         }
     },
