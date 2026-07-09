@@ -33,9 +33,20 @@ class LabelChecker:
         })
     
     def load_frame_ids(self):
-        lidar_files = os.listdir(os.path.join(self.path, 'lidar'))
+        # 兼容新旧数据布局：CCRS 用 rslidar_points，旧数据用 lidar
+        lidar_dir = None
+        for cand in ('rslidar_points', 'lidar'):
+            p = os.path.join(self.path, cand)
+            if os.path.isdir(p):
+                lidar_dir = p
+                break
+        if lidar_dir is None:
+            self.frame_ids = []
+            return
+        lidar_files = os.listdir(lidar_dir)
         ids = list(map(lambda f: os.path.splitext(f)[0], lidar_files))
         self.frame_ids = ids
+
 
     def load_labels(self):
         label_folder = os.path.join(self.path, 'label')

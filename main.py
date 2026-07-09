@@ -80,16 +80,30 @@ class Root(object):
     @cherrypy.expose
     def saveworldlist(self):
 
-      # cl = cherrypy.request.headers['Content-Length']
-      rawbody = cherrypy.request.body.readline().decode('UTF-8')
-      data = json.loads(rawbody)
+      # 读取完整请求体：readline() 遇到换行会截断，read() 才能拿到全部 JSON
+      rawbody = cherrypy.request.body.read().decode('UTF-8')
+      try:
+        data = json.loads(rawbody)
+      except Exception as e:
+        cherrypy.response.status = 400
+        print(f"[main] saveworldlist invalid json: {e}")
+        return "invalid json"
 
-      for d in data:
-        scene = d["scene"]
-        frame = d["frame"]
-        ann = d["annotation"]
-        with open("./data/"+scene +"/label/"+frame+".json",'w') as f:
-          json.dump(ann, f, indent=2, sort_keys=True)
+      try:
+        for d in data:
+          scene = d["scene"]
+          frame = d["frame"]
+          ann = d["annotation"]
+          label_dir = os.path.join("./data", scene, "label")
+          # 兼容 CCRS 等新数据目录：label 子目录可能不存在，按需创建
+          os.makedirs(label_dir, exist_ok=True)
+          filename = os.path.join(label_dir, frame + ".json")
+          with open(filename, 'w') as f:
+            json.dump(ann, f, indent=2, sort_keys=True)
+      except Exception as e:
+        cherrypy.response.status = 500
+        print(f"[main] saveworldlist error: {e}")
+        return f"save failed: {e}"
 
       return "ok"
 
@@ -145,24 +159,75 @@ class Root(object):
     #   return 0
 
     # data  N*3 numpy array
-    @cherrypy.expose    
+    @cherrypy.expose
     @cherrypy.tools.json_out()
     def predict_rotation(self):
-      cl = cherrypy.request.headers['Content-Length']
       rawbody = cherrypy.request.body.readline().decode('UTF-8')
-      
-      data = json.loads(rawbody)
-      
-      return {"angle": pre_annotate.predict_yaw(data["points"])}
-      #return {}
+      try:
+        data = json.loads(rawbody)
+      except Exception:
+        cherrypy.response.status = 400
+        return {"error": "invalid json"}
+      pts = data.get("points") if isinstance(data, dict) else None
+      if pts is None:
+        cherrypy.response.status = 400
+        return {"error": "field 'points' missing"}
+      return {"angle": pre_annotate.predict_yaw(pts)}
 
-    
-    @cherrypy.expose    
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def ml_status(self):
+      """探查当前半自动标注后端加载状态，方便前端/运维排查。"""
+      return pre_annotate.get_status()
+
+    def _resolve_pcd_path(self, scene, frame):
+      """查找 pcd 文件，兼容新/旧目录布局。
+
+      优先使用 scene_reader 报告的 lidar_dir/lidar_ext；找不到时依次尝试
+      常见目录（rslidar_points/lidar）与后缀（.pcd/.bin）。
+      """
+      meta = scene_reader.get_one_scene(scene) or {}
+      preferred_dir = meta.get("lidar_dir") or "lidar"
+      preferred_ext = meta.get("lidar_ext") or ".pcd"
+
+      # 去重同时保持顺序
+      seen = set()
+      candidates = []
+      def _add(d, e):
+        key = (d, e)
+        if key in seen:
+          return
+        seen.add(key)
+        candidates.append(key)
+
+      _add(preferred_dir, preferred_ext)
+      for d in (preferred_dir, "rslidar_points", "lidar"):
+        for e in (preferred_ext, ".pcd", ".bin"):
+          _add(d, e)
+
+      for d, e in candidates:
+        p = os.path.join("./data", scene, d, frame + e)
+        if os.path.isfile(p):
+          return p
+
+      return os.path.join("./data", scene, preferred_dir, frame + preferred_ext)
+
+    @cherrypy.expose
     @cherrypy.tools.json_out()
     def auto_annotate(self, scene, frame):
       print("auto annotate ", scene, frame)
-      return pre_annotate.annotate_file('./data/{}/lidar/{}.pcd'.format(scene,frame))
-      
+      pcd_path = self._resolve_pcd_path(scene, frame)
+      if not os.path.isfile(pcd_path):
+        cherrypy.response.status = 404
+        return {"error": f"pcd not found: {pcd_path}"}
+      try:
+        return pre_annotate.annotate_file(pcd_path)
+      except Exception as e:
+        cherrypy.response.status = 500
+        # 详细错误只在服务器日志里，返回给前端的是简明信息
+        print(f"[main] auto_annotate error: {e}")
+        return {"error": f"auto_annotate failed: {e}"}
+
 
 
     @cherrypy.expose    

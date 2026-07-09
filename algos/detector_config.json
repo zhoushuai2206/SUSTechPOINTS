@@ -1,0 +1,28 @@
+{
+    "//": "半自动标注检测器配置。backend 可选: dummy / openpcdet。",
+    "//1": "切换到 openpcdet 前，请按 doc/pre_annotate_integration.md 安装 torch + OpenPCDet 并下载权重。",
+    "backend": "dummy",
+
+    "dummy": {
+        "max_range": 60.0,
+        "min_range": 1.5,
+        "voxel": 0.4,
+        "min_cluster_pts": 30,
+        "max_clusters": 80,
+        "ground_margin": 0.25
+    },
+
+    "openpcdet": {
+        "config_path": "third_party/OpenPCDet/tools/cfgs/kitti_models/pointpillar.yaml",
+        "ckpt_path":   "algos/models/pointpillar_7728.pth",
+        "class_names": ["Car", "Pedestrian", "Cyclist"],
+        "score_thresh": 0.3,
+        "device": "cuda:0",
+        "num_point_features": 4,
+        "class_map": {
+            "Car": "Car",
+            "Pedestrian": "Pedestrian",
+            "Cyclist": "BicycleRider"
+        }
+    }
+}

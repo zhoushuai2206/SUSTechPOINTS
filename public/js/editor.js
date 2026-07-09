@@ -278,44 +278,87 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
     };
 
     this.addRangeCircle= function(){
-        
+
         var h = 1;
-                        
-        var body = [
-        ];
-        
+
+        // 三个圆环半径系数（相对于外层 scale.x/y = 50），对应实际半径 30m/50m/100m
+        var ringRadii = [0.6, 1.0, 2.0];
+        var body = [];
+
         var segments=64;
         for (var i = 0; i<segments; i++){
             var theta1 = (2*Math.PI/segments) * i;
-            var x1 = Math.cos(theta1);
-            var y1 = Math.sin(theta1);
-
             var theta2 = 2*Math.PI/segments * ((i+1)%segments);
-            var x2 = Math.cos(theta2);
-            var y2 = Math.sin(theta2);
 
-            body.push(x1,y1,h,x2,y2,h);
-            body.push(0.6*x1,0.6*y1,h,0.6*x2,0.6*y2,h);
-            body.push(2.0*x1,2.0*y1,h,2.0*x2,2.0*y2,h);
+            ringRadii.forEach(function(r){
+                body.push(r*Math.cos(theta1), r*Math.sin(theta1), h,
+                          r*Math.cos(theta2), r*Math.sin(theta2), h);
+            });
         }
 
         this.data.dbg.alloc();
         var bbox = new THREE.BufferGeometry();
         bbox.setAttribute( 'position', new THREE.Float32BufferAttribute(body, 3 ) );
-        
-        var box = new THREE.LineSegments( bbox, 
-            new THREE.LineBasicMaterial( { color: 0x888800, linewidth: 1, opacity: 0.5, transparent: true } ) );    
-         
-        box.scale.x=50;
-        box.scale.y=50;
-        box.scale.z=-3;
-        box.position.x=0;
-        box.position.y=0;
-        box.position.z=0;
-        box.computeLineDistances();
-        this.rangeCircle = box;
-        this.scene.add(box);
+
+        var lines = new THREE.LineSegments( bbox,
+            new THREE.LineBasicMaterial( { color: 0x888800, linewidth: 1, opacity: 0.5, transparent: true } ) );
+
+        var scaleXY = 50;
+        var scaleZ = -3;
+        lines.scale.set(scaleXY, scaleXY, scaleZ);
+        lines.computeLineDistances();
+
+        // 用一个 Group 承载线框和距离文字，方便一起显示/隐藏
+        var group = new THREE.Group();
+        group.add(lines);
+
+        // 生成一张画好文字的 canvas，返回 Sprite
+        function makeDistanceLabel(text){
+            var canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 64;
+            var ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = 'bold 44px sans-serif';
+            ctx.fillStyle = 'rgba(255, 235, 60, 0.95)';
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.lineWidth = 4;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.strokeText(text, canvas.width/2, canvas.height/2);
+            ctx.fillText(text, canvas.width/2, canvas.height/2);
+
+            var texture = new THREE.CanvasTexture(canvas);
+            texture.needsUpdate = true;
+            var material = new THREE.SpriteMaterial({
+                map: texture,
+                transparent: true,
+                depthTest: false,
+                depthWrite: false,
+            });
+            var sprite = new THREE.Sprite(material);
+            // 世界尺寸：宽 8m 高 2m，正好在圆环上方可读
+            sprite.scale.set(8, 2, 1);
+            return sprite;
+        }
+
+        // 每个圆环在 +x / -x / +y / -y 四个方向各贴一个标签，方便任意角度查看
+        var offsets = [
+            {x: 1, y: 0}, {x: -1, y: 0}, {x: 0, y: 1}, {x: 0, y: -1},
+        ];
+        ringRadii.forEach(function(r){
+            var distance = Math.round(r * scaleXY);   // 30 / 50 / 100 米
+            offsets.forEach(function(o){
+                var sp = makeDistanceLabel(distance + ' m');
+                sp.position.set(o.x * distance, o.y * distance, h);
+                group.add(sp);
+            });
+        });
+
+        this.rangeCircle = group;
+        this.scene.add(group);
     };
+
 
 
     this.showRangeCircle = function(show){
