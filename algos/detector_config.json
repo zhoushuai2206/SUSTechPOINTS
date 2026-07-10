@@ -1,28 +1,29 @@
 {
-    "//": "半自动标注检测器配置。backend 可选: dummy / openpcdet。",
-    "//1": "切换到 openpcdet 前，请按 doc/pre_annotate_integration.md 安装 torch + OpenPCDet 并下载权重。",
-    "backend": "dummy",
-
-    "dummy": {
-        "max_range": 60.0,
-        "min_range": 1.5,
-        "voxel": 0.4,
-        "min_cluster_pts": 30,
-        "max_clusters": 80,
-        "ground_margin": 0.25
-    },
+    "//": "自动标注后端固定为 CenterPoint（openpcdet 后端）。启动脚本会自动安装 torch/spconv/OpenPCDet 并下载权重。",
+    "//1": "如需自定义权重或换用其它 CenterPoint 变体，覆盖 config_path/ckpt_path 即可。",
+    "//2": "class_map 只映射到 obj_cfg.js 里保留的类。obj_cfg.js 里没有的类会原样透传，标注员在前端可手动改。",
+    "backend": "openpcdet",
 
     "openpcdet": {
-        "config_path": "third_party/OpenPCDet/tools/cfgs/kitti_models/pointpillar.yaml",
-        "ckpt_path":   "algos/models/pointpillar_7728.pth",
-        "class_names": ["Car", "Pedestrian", "Cyclist"],
+        "config_path": "third_party/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_dyn_pp_centerpoint.yaml",
+        "ckpt_path":   "algos/models/centerpoint_pp.pth",
+        "class_names": [
+            "car", "truck", "construction_vehicle", "bus", "trailer",
+            "barrier", "motorcycle", "bicycle", "pedestrian", "traffic_cone"
+        ],
         "score_thresh": 0.3,
         "device": "cuda:0",
-        "num_point_features": 4,
+        "num_point_features": 5,
         "class_map": {
-            "Car": "Car",
-            "Pedestrian": "Pedestrian",
-            "Cyclist": "BicycleRider"
+            "car":                  "Car",
+            "truck":                "Truck",
+            "trailer":              "Truck",
+            "construction_vehicle": "Truck",
+            "bus":                  "Bus",
+            "motorcycle":           "Motorcycle",
+            "bicycle":              "Bicycle",
+            "pedestrian":           "Pedestrian",
+            "traffic_cone":         "Cone"
         }
     }
 }

@@ -132,19 +132,25 @@ function AuxLidar(sceneMeta, world, frameInfo, auxLidarName){
     };
 
     this.filterPoints = function(position){
-        let filtered_position = [];
-
-        if (pointsGlobalConfig.enableFilterPoints)
+        if (!pointsGlobalConfig.enableFilterPoints)
         {
-            for(let i = 0; i <= position.length; i+=3)
-            {
-                if (position[i+2] <= pointsGlobalConfig.filterPointsZ)
-                {
-                    filtered_position.push(position[i]);
-                    filtered_position.push(position[i+1]);
-                    filtered_position.push(position[i+2]);
+            return position;
+        }
 
-                }
+        let max_z = parseFloat(pointsGlobalConfig.filterPointsMaxZ);
+        let min_z = parseFloat(pointsGlobalConfig.filterPointsMinZ);
+        if (isNaN(max_z)) max_z = Infinity;
+        if (isNaN(min_z)) min_z = -Infinity;
+
+        let filtered_position = [];
+        for (let i = 0; i + 2 < position.length; i += 3)
+        {
+            let pz = position[i + 2];
+            if (pz <= max_z && pz >= min_z)
+            {
+                filtered_position.push(position[i]);
+                filtered_position.push(position[i + 1]);
+                filtered_position.push(position[i + 2]);
             }
         }
 

@@ -28,19 +28,18 @@ from .base import BaseDetector, Detection
 from . import geometry as G
 
 
-# 与 SUSTechPOINTS 前端 obj_cfg.js 对齐的类别映射（可在 config 里覆盖）
+# 与 SUSTechPOINTS 前端 obj_cfg.js 对齐的默认类别映射（可在 config 里覆盖）。
+# obj_cfg.js 精简后只保留：Car / Truck / Bus / Motorcycle / Bicycle / Pedestrian / Cone / ForkLift。
 _DEFAULT_CLASS_MAP = {
     "Car":            "Car",
+    "Vehicle":        "Car",
     "Truck":          "Truck",
     "Bus":            "Bus",
-    "Van":            "Van",
-    "Vehicle":        "Car",
+    "Motorcycle":     "Motorcycle",
+    "Bicycle":        "Bicycle",
     "Pedestrian":     "Pedestrian",
     "Person":         "Pedestrian",
-    "Cyclist":        "BicycleRider",
-    "Motorcyclist":   "MotorcyleRider",
-    "Bicycle":        "Bicycle",
-    "Motorcycle":     "Motorcycle",
+    "Cone":           "Cone",
 }
 
 
@@ -79,7 +78,9 @@ class OpenPCDetDetector(BaseDetector):
         try:
             import torch  # type: ignore
             from pcdet.config import cfg, cfg_from_yaml_file  # type: ignore
-            from pcdet.datasets import DatasetTemplate  # type: ignore
+            # 从子模块直接导入，绕过 pcdet.datasets/__init__.py 里对 Argo2Dataset 的顶层 import
+            # （Argo2 会引入 av2 + kornia，把 numpy 拉到 2.x 造成 torch 编译不兼容）。
+            from pcdet.datasets.dataset import DatasetTemplate  # type: ignore
             from pcdet.models import build_network, load_data_to_gpu  # type: ignore
         except Exception as e:  # noqa: BLE001
             raise RuntimeError(
@@ -90,7 +91,23 @@ class OpenPCDetDetector(BaseDetector):
         self._torch = torch
         self._load_data_to_gpu = load_data_to_gpu
 
-        cfg_from_yaml_file(self.config_path, cfg)
+        # OpenPCDet 的 yaml 里 `_BASE_CONFIG_: cfgs/dataset_configs/*.yaml` 是相对
+        # `tools/` 的路径。cfg_from_yaml_file 内部 `open()` 用当前工作目录解析这些相对路径，
+        # 所以先临时 chdir 到 OpenPCDet 的 tools/ 目录再加载。
+        import os
+        _cfg_abs = os.path.abspath(self.config_path)
+        # 找 OpenPCDet 根：..tools 是 cfg 所在目录的祖先，往上退到 tools/
+        _pcdet_tools = _cfg_abs
+        while os.path.basename(_pcdet_tools) != "tools" and _pcdet_tools != "/":
+            _pcdet_tools = os.path.dirname(_pcdet_tools)
+        if os.path.basename(_pcdet_tools) != "tools":
+            _pcdet_tools = os.path.dirname(os.path.dirname(_cfg_abs))
+        _prev_cwd = os.getcwd()
+        try:
+            os.chdir(_pcdet_tools)
+            cfg_from_yaml_file(_cfg_abs, cfg)
+        finally:
+            os.chdir(_prev_cwd)
         if self.class_names is None:
             self.class_names = list(cfg.CLASS_NAMES)
 
@@ -110,8 +127,15 @@ class OpenPCDetDetector(BaseDetector):
         self._model = build_network(model_cfg=cfg.MODEL,
                                     num_class=len(self.class_names),
                                     dataset=self._dataset)
+        # load_params_from_file 里会调 logger.info / logger.warning，传 None 会崩。
+        # 用 stdlib logging 拿一个静默 logger 顶上。
+        import logging
+        _quiet_logger = logging.getLogger("openpcdet_load")
+        if not _quiet_logger.handlers:
+            _quiet_logger.addHandler(logging.NullHandler())
+        _quiet_logger.setLevel(logging.WARNING)
         self._model.load_params_from_file(filename=self.ckpt_path,
-                                          logger=None,
+                                          logger=_quiet_logger,
                                           to_cpu=True)
         self._model.to(self.device_str).eval()
         self.available = True

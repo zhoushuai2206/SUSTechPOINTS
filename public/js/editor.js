@@ -654,6 +654,20 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         
 
             
+        case 'cm-auto-annotate-frame':
+            {
+                // 主视图右键 "Auto Annotate"：对当前帧点云调 CenterPoint，
+                // 结果覆盖当前帧标签、保存到磁盘、刷新前端。
+                let curWorld = this.data.world;
+                if (!curWorld) break;
+                autoAnnotate(curWorld, () => {
+                    this.on_load_world_finished(curWorld);
+                    // 只保存当前帧，避免连带保存其它未确认帧
+                    saveWorldList([curWorld]);
+                });
+            }
+            break;
+
         case 'cm-save':
             saveWorldList(this.data.worldList);
             break;

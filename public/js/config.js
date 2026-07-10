@@ -19,8 +19,9 @@ class Config{
     color_obj = "category";
     theme = "dark";
 
-    enableFilterPoints = false;
-    filterPointsZ = 2.0;
+    enableFilterPoints = true;
+    filterPointsMaxZ = 2.0;  // 显示点云的最大 Z 值，超过此值的点云不加载显示
+    filterPointsMinZ = -5.0; // 显示点云的最小 Z 值，低于此值的点云不加载显示
 
     batchModeInstNumber = 20;
     batchModeSubviewSize = {width: 130, height: 450};
@@ -98,7 +99,8 @@ class Config{
         ["enablePreload", this.toBool],
         ["enableAuxLidar", this.toBool],
         ["enableFilterPoints", this.toBool],
-        ["filterPointsZ", parseFloat],
+        ["filterPointsMaxZ", parseFloat],
+        ["filterPointsMinZ", parseFloat],
         ["color_points", null],
         ["coordinateSystem", null],
         ["batchModeInstNumber", parseInt],

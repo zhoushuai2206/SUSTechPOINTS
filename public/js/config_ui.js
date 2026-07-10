@@ -199,10 +199,15 @@ class ConfigUi{
             return false;
         },
 
-        "#cfg-data-filter-points-z": (event)=>{
-            let z = event.currentTarget.value;
+        "#cfg-data-filter-points-max-z": (event)=>{
+            let z = parseFloat(event.currentTarget.value);
+            pointsGlobalConfig.setItem("filterPointsMaxZ", z);
+            return false;
+        },
 
-            pointsGlobalConfig.setItem("filterPointsZ", z);
+        "#cfg-data-filter-points-min-z": (event)=>{
+            let z = parseFloat(event.currentTarget.value);
+            pointsGlobalConfig.setItem("filterPointsMinZ", z);
             return false;
         },
 
@@ -318,7 +323,13 @@ class ConfigUi{
         this.menu.querySelector("#cfg-coordinate-system-select").value = pointsGlobalConfig.coordinateSystem;
         this.menu.querySelector("#cfg-batch-mode-inst-number").value = pointsGlobalConfig.batchModeInstNumber;
         this.menu.querySelector("#cfg-data-filter-points-checkbox").checked = pointsGlobalConfig.enableFilterPoints;
-        this.menu.querySelector("#cfg-data-filter-points-z").value = pointsGlobalConfig.filterPointsZ;
+        // 初始化 Z 范围输入框：max_z / min_z
+        {
+            let maxZInput = this.menu.querySelector("#cfg-data-filter-points-max-z");
+            let minZInput = this.menu.querySelector("#cfg-data-filter-points-min-z");
+            if (maxZInput) maxZInput.value = pointsGlobalConfig.filterPointsMaxZ;
+            if (minZInput) minZInput.value = pointsGlobalConfig.filterPointsMinZ;
+        }
         this.menu.querySelector("#cfg-hide-id-checkbox").value = pointsGlobalConfig.hideId;
         this.menu.querySelector("#cfg-hide-category-checkbox").value = pointsGlobalConfig.hideCategory;
         this.menu.querySelector("#cfg-data-preload-checkbox").checked = pointsGlobalConfig.enablePreload;

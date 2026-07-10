@@ -16,15 +16,22 @@ function Lidar(sceneMeta, world, frameInfo){
     this.points = null;
     this.points_load_time = 0;
 
-    this.remove_high_ponts = function(pcd, z){
+    // 按 Z 值范围过滤点云：只保留 min_z <= z <= max_z 的点
+    this.filter_points_by_z_range = function(pcd, max_z, min_z){
         let position = [];
         let color = [];
         let normal = [];
         let intensity = [];
         //3, 3, 3, 1
 
+        if (max_z === undefined || max_z === null || isNaN(max_z))
+            max_z = Infinity;
+        if (min_z === undefined || min_z === null || isNaN(min_z))
+            min_z = -Infinity;
+
         for (let i = 0; i < pcd.position.length/3; i++){
-            if (pcd.position[i*3+2] < z){
+            let pz = pcd.position[i*3+2];
+            if (pz <= max_z && pz >= min_z){
                 position.push(pcd.position[i*3+0]);
                 position.push(pcd.position[i*3+1]);
                 position.push(pcd.position[i*3+2]);
@@ -92,7 +99,11 @@ function Lidar(sceneMeta, world, frameInfo){
                 
                 if (_self.data.cfg.enableFilterPoints)// do some filtering work here
                 {
-                    pcd = _self.remove_high_ponts(pcd, _self.data.cfg.filterPointsZ);
+                    // 从配置读取 max_z 与 min_z
+                    let cfg = _self.data.cfg;
+                    let max_z = parseFloat(cfg.filterPointsMaxZ);
+                    let min_z = parseFloat(cfg.filterPointsMinZ);
+                    pcd = _self.filter_points_by_z_range(pcd, max_z, min_z);
                 }
 
                 

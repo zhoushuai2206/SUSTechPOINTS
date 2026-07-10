@@ -321,6 +321,13 @@
 
 						<div class="menu-item menu-seperator"></div>
 
+						<div class="menu-item" id="cm-auto-annotate-frame" title="对当前帧点云跑 CenterPoint 自动标注，结果覆盖当前帧标签并保存">
+							<div class="menu-item-icon"></div>
+							<div class="menu-item-text">Auto Annotate</div>
+						</div>
+
+						<div class="menu-item menu-seperator"></div>
+
 						<div class="menu-item" id="cm-goto">
 							<div class="menu-item-icon"></div>
 							<div class="menu-item-text">Go to</div>
@@ -863,8 +870,16 @@
 										<div class="menu-item-text">Hide points</div>
 										<div class="cfg-widget-group">
 											<input type="checkbox" id="cfg-data-filter-points-checkbox" class="cfg-widget">
-											<span> z-threshold</span>
-											<input id="cfg-data-filter-points-z" class="cfg-widget">
+										</div>
+									</div>
+
+									<div class="menu-nonclickable-item" id="cfg-data-filter-points-range">
+										<div class="menu-item-text">Z range</div>
+										<div class="cfg-widget-group">
+											<span> min_z</span>
+											<input id="cfg-data-filter-points-min-z" class="cfg-widget" style="width:60px;">
+											<span> max_z</span>
+											<input id="cfg-data-filter-points-max-z" class="cfg-widget" style="width:60px;">
 										</div>
 									</div>
 
