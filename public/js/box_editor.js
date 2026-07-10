@@ -1082,10 +1082,13 @@ function BoxEditorManager(parentUi, viewManager, objectTrackView,
             this.getSelectedEditors().forEach(e=>{
                 if (!e.box) 
                     return;
-                if (e.box.rotation.z > 0){
-                    e.box.rotation.z -= Math.PI;
-                }else{
-                    e.box.rotation.z += Math.PI;
+                // 顺时针旋转车头 90 度，同时交换 scale.x / scale.y
+                // 保持 box 几何位置和外形不变，只调整朝向语义
+                e.box.rotation.z -= Math.PI / 2;
+                {
+                    const sx = e.box.scale.x;
+                    e.box.scale.x = e.box.scale.y;
+                    e.box.scale.y = sx;
                 }
 
                 onBoxChangedInBatchMode(e.box);

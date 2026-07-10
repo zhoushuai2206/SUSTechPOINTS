@@ -2019,12 +2019,15 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
                 this.selected_box.rotation.z -= 0.01;
                 break;
             
-            case 'z_rotate_reverse':        
-                if (this.selected_box.rotation.z > 0){
-                    this.selected_box.rotation.z -= Math.PI;
-                }else{
-                    this.selected_box.rotation.z += Math.PI;
-                }    
+            case 'z_rotate_reverse':
+                // 顺时针旋转车头 90 度，同时交换 scale.x / scale.y
+                // 从而保持 box 在世界坐标下的几何位置和外形不变，仅调整朝向语义
+                this.selected_box.rotation.z -= Math.PI / 2;
+                {
+                    const sx = this.selected_box.scale.x;
+                    this.selected_box.scale.x = this.selected_box.scale.y;
+                    this.selected_box.scale.y = sx;
+                }
                 break;
             case 'reset':
                 this.selected_box.rotation.x = 0;

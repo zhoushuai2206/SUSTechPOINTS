@@ -21,7 +21,8 @@ class ProjectiveView{
         on_reset_rotate, 
         on_focus, 
         on_box_remove,
-        fn_isActive)
+        fn_isActive,
+        on_head_rotate_90cw)
     {
 
         this.ui = ui;
@@ -38,6 +39,8 @@ class ProjectiveView{
         this.on_focus = on_focus;
         this.on_box_remove = on_box_remove;
         this.isActive = fn_isActive;
+        // 可选：仅在俯视图注入，用于 'g' 键"车头方向顺时针 90°+ 交换 xy 尺寸"
+        this.on_head_rotate_90cw = on_head_rotate_90cw;
 
         this.lines = {
             top: ui.querySelector("#line-top"),
@@ -768,7 +771,14 @@ class ProjectiveView{
             case 'g':
                 event.preventDefault();
                 event.stopPropagation();
-                this.on_direction_changed(Math.PI, false);
+                // 只调整车头朝向：顺时针旋转 90° + 交换 scale.x/y，
+                // 保持 box 在世界坐标下的几何位置和外形不变。
+                // 仅俯视图注入了 on_head_rotate_90cw；其它视图回退到通用旋转。
+                if (this.on_head_rotate_90cw){
+                    this.on_head_rotate_90cw();
+                } else {
+                    this.on_direction_changed(-Math.PI / 2, false);
+                }
                 break;
             case 'w':
             case 'ArrowUp':
@@ -1178,6 +1188,17 @@ class ProjectiveViewOps{
             scope.on_box_changed(scope.box);
         }
 
+        // 'g' 键专用：只调整车头朝向（顺时针 90°）+ 交换 scale.x/y，
+        // 保持 box 在世界坐标下的几何位置和外形不变。
+        function on_z_head_rotate_90cw(){
+            if (!scope.box) return;
+            scope.box.rotation.z -= Math.PI / 2;
+            const sx = scope.box.scale.x;
+            scope.box.scale.x = scope.box.scale.y;
+            scope.box.scale.y = sx;
+            scope.on_box_changed(scope.box);
+        }
+
         this.z_view_handle = new ProjectiveView(scope.ui.querySelector("#z-view-manipulator"), 
                                             editorCfg,
                                             on_z_edge_changed, 
@@ -1191,7 +1212,9 @@ class ProjectiveViewOps{
                                             on_z_reset_rotate,
                                             default_on_focus,
                                             default_on_del,
-                                            this.isActive.bind(this));
+                                            this.isActive.bind(this),
+                                            on_z_head_rotate_90cw);
+
 
 
         ///////////////////////////////////////////////////////////////////////////////////
