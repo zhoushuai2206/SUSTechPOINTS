@@ -14,6 +14,7 @@ class ContextMenu {
                 playSubMenu: ui.querySelector("#play-submenu"),
                 gotoSubMenu: ui.querySelector("#goto-submenu"),
                 fitSubMenu: ui.querySelector("#cm-fit-submenu"),
+                autoAnnotateSubMenu: ui.querySelector("#auto-annotate-submenu"),
                 //thisSubMenu: ui.querySelector("#cm-this-submenu"),
             };
             
@@ -37,7 +38,8 @@ class ContextMenu {
             let motherMenu = {
                 "#cm-goto": "#goto-submenu",
                 "#cm-new": "#new-submenu",
-                "#cm-play": "#play-submenu",                
+                "#cm-play": "#play-submenu",
+                "#cm-auto-annotate": "#auto-annotate-submenu",
                 "#cm-fit": "#cm-fit-submenu",
                 //"#cm-this": "#cm-this-submenu",
             };

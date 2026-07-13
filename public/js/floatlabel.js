@@ -568,23 +568,29 @@ class FloatLabelManager {
         
         var visible_p = camera_p;
 
+        // 原逻辑：独立取 max_x / max_y，会产生一个离 box 较远的虚拟角点。
+        // 改为：先算所有投影顶点的重心（屏幕中心），再向"最右上"方向移动 1/4 距离，
+        // 使标签贴近 box 边缘但不重叠。
         var best_p = {x:-1, y: -1, z: -2};
-
         visible_p.forEach(function(p){
-            if (p.x > best_p.x){
-                best_p.x = p.x;
-            }
+            if (p.x > best_p.x) best_p.x = p.x;
+            if (p.y > best_p.y) best_p.y = p.y;
+            if (p.z > best_p.z) best_p.z = p.z;
+        });
 
-            if (p.y > best_p.y){
-                best_p.y = p.y;
-            }
+        // 所有顶点的重心
+        var cx = 0, cy = 0;
+        visible_p.forEach(function(p){ cx += p.x; cy += p.y; });
+        cx /= visible_p.length;
+        cy /= visible_p.length;
 
-            if (p.z > best_p.z){
-                best_p.z = p.z;
-            }
-        })
-
-        return best_p;
+        // 向最大角方向移动 1/4 距离（原来是 1 倍，现在是 0.25 倍）
+        var ratio = 0.25;
+        return {
+            x: cx + (best_p.x - cx) * ratio,
+            y: cy + (best_p.y - cy) * ratio,
+            z: best_p.z,
+        };
     }
 }
 

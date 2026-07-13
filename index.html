@@ -321,9 +321,24 @@
 
 						<div class="menu-item menu-seperator"></div>
 
-						<div class="menu-item" id="cm-auto-annotate-frame" title="对当前帧点云跑 CenterPoint 自动标注，结果覆盖当前帧标签并保存">
+						<div class="menu-item" id="cm-auto-annotate" title="对当前帧点云自动化处理">
 							<div class="menu-item-icon"></div>
 							<div class="menu-item-text">Auto Annotate</div>
+							<div class="menu-item-arrow menu-item-icon">
+								<svg viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" focusable="false" class="svg-menu-icon"><g>
+									<path d="M12 8 L 18 12 L 12 16Z"></path>
+								</g></svg>
+							</div>
+							<div id="auto-annotate-submenu">
+								<div class="menu-item" id="cm-auto-annotate-detect" title="跑 CenterPoint 生成候选框，覆盖当前帧标签并保存">
+									<div class="menu-item-icon"></div>
+									<div class="menu-item-text">Detect</div>
+								</div>
+								<div class="menu-item" id="cm-auto-annotate-id" title="保留当前帧合理 id，重新分配非法/未赋值的 id（从 1 起递增）">
+									<div class="menu-item-icon"></div>
+									<div class="menu-item-text">ID</div>
+								</div>
+							</div>
 						</div>
 
 						<div class="menu-item menu-seperator"></div>

@@ -654,17 +654,92 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         
 
             
-        case 'cm-auto-annotate-frame':
+        case 'cm-auto-annotate-detect':
             {
-                // 主视图右键 "Auto Annotate"：对当前帧点云调 CenterPoint，
+                // 主视图右键 Auto Annotate → Detect：对当前帧点云调 CenterPoint，
                 // 结果覆盖当前帧标签、保存到磁盘、刷新前端。
                 let curWorld = this.data.world;
                 if (!curWorld) break;
                 autoAnnotate(curWorld, () => {
                     this.on_load_world_finished(curWorld);
-                    // 只保存当前帧，避免连带保存其它未确认帧
                     saveWorldList([curWorld]);
                 });
+            }
+            break;
+
+        case 'cm-auto-annotate-id':
+            {
+                // 主视图右键 Auto Annotate → ID：
+                // 1. 保留"合理 id"：非空、正整数、在当前帧内唯一。
+                // 2. 对非法（重复/空/非正整数）的 box 按从小到大顺序分配最小可用正整数 id。
+                // 3. 完成后保存当前帧。
+                let curWorld = this.data.world;
+                if (!curWorld || !curWorld.annotation || !curWorld.annotation.boxes) break;
+
+                const boxes = curWorld.annotation.boxes;
+                if (boxes.length === 0) break;
+
+                // 判断 id 是否是合理正整数
+                const isValidInt = (v) => {
+                    if (v === null || v === undefined || v === '') return false;
+                    const n = parseInt(v, 10);
+                    return Number.isFinite(n) && n > 0 && String(n) === String(v).trim();
+                };
+
+                // 找出 id 重复的候选：先统计各 id 出现次数
+                const idCount = {};
+                boxes.forEach(b => {
+                    const id = b.obj_track_id;
+                    if (isValidInt(id)) {
+                        idCount[id] = (idCount[id] || 0) + 1;
+                    }
+                });
+
+                // 保留集合：id 合法且在本帧内唯一
+                const keptIds = new Set();
+                boxes.forEach(b => {
+                    const id = b.obj_track_id;
+                    if (isValidInt(id) && idCount[id] === 1) {
+                        keptIds.add(parseInt(id, 10));
+                    }
+                });
+
+                // 收集需要重新分配的 box（按 boxes 数组顺序，保持稳定）
+                const needNewId = boxes.filter(b => {
+                    const id = b.obj_track_id;
+                    return !isValidInt(id) || idCount[id] > 1;
+                });
+
+                if (needNewId.length === 0) {
+                    logger.log('[auto-id] 当前帧所有 id 均合理，无需修改');
+                    break;
+                }
+
+                // 找最小可用正整数（从 1 开始，跳过已保留的）
+                let nextId = 1;
+                const getNextAvailable = () => {
+                    while (keptIds.has(nextId)) nextId++;
+                    const id = nextId;
+                    keptIds.add(id);
+                    nextId++;
+                    return id;
+                };
+
+                needNewId.forEach(b => {
+                    const newId = getNextAvailable();
+                    logger.log(`[auto-id] box(${b.obj_type}) id: "${b.obj_track_id}" → ${newId}`);
+                    b.obj_track_id = newId;
+                    // 同步悬浮标签
+                    this.floatLabelManager.set_object_track_id(b.obj_local_id, b.obj_track_id);
+                    // 注册到全局 id 管理器
+                    objIdManager.addObject({ category: b.obj_type, id: b.obj_track_id });
+                });
+
+                curWorld.annotation.setModified();
+                this.header.updateModifiedStatus();
+                this.on_load_world_finished(curWorld);
+                saveWorldList([curWorld]);
+                logger.log(`[auto-id] 已重分配 ${needNewId.length} 个 id，保存当前帧`);
             }
             break;
 
