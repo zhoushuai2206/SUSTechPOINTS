@@ -39,17 +39,70 @@ var Header=function(ui, data, cfg, onSceneChanged, onFrameChanged, onObjectSelec
     
 
     this.updateSceneList = function(sceneDescList){
-        let scene_selector_str = "<option>--scene--</option>";
-        for (let scene in sceneDescList)
-        {
-            if (data.sceneDescList[scene])
-                scene_selector_str += "<option value="+scene +">"+scene + " - " +data.sceneDescList[scene].scene + "</option>";
-            else
-                scene_selector_str += "<option value="+scene +">"+scene+ "</option>";
+        // 新的 data 目录布局中，scene 名带 category 前缀（如 "single_frame/xxx"），
+        // 这里按 category 分组用 <optgroup> 展示；不带前缀的旧数据归入"其它"分组。
+        // 分类中文名对照，未列出的按原名展示。
+        const categoryLabel = {
+            "single_frame": "单帧 (single_frame)",
+            "multi_frame":  "连续帧 (multi_frame)",
+        };
+
+        // 按 category 收集 scene
+        const groups = {};                // {category: [{value, label}, ...]}
+        const uncategorized = [];         // 无 category 前缀的 scene
+        for (const scene in sceneDescList) {
+            const slash = scene.indexOf("/");
+            const desc = sceneDescList[scene];
+            const descName = desc && desc.scene;
+            const bucket = (slash >= 0) ? scene.substring(0, slash) : null;
+            const clipName = (slash >= 0) ? scene.substring(slash + 1) : scene;
+            const label = descName ? (clipName + " - " + descName) : clipName;
+            const item = { value: scene, label: label };
+
+            if (bucket) {
+                (groups[bucket] = groups[bucket] || []).push(item);
+            } else {
+                uncategorized.push(item);
+            }
         }
 
-        this.ui.querySelector("#scene-selector").innerHTML = scene_selector_str;
+        // 保持稳定顺序：先显式列出的 category，再其它 category，最后 uncategorized
+        const orderedCategories = [];
+        Object.keys(categoryLabel).forEach(k => {
+            if (groups[k]) orderedCategories.push(k);
+        });
+        Object.keys(groups).sort().forEach(k => {
+            if (!categoryLabel[k]) orderedCategories.push(k);
+        });
+
+        // 拼装 <select> 的 HTML
+        const escape = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+                                     .replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        let html = '<option value="">--scene--</option>';
+        orderedCategories.forEach(cat => {
+            const label = categoryLabel[cat] || cat;
+            html += '<optgroup label="' + escape(label) + '">';
+            groups[cat].forEach(it => {
+                html += '<option value="' + escape(it.value) + '">' + escape(it.label) + '</option>';
+            });
+            html += '</optgroup>';
+        });
+        if (uncategorized.length > 0) {
+            // 旧数据（data 根下直接就是 clip）时才输出这个分组，避免空的 group
+            if (orderedCategories.length > 0) {
+                html += '<optgroup label="其它 (uncategorized)">';
+            }
+            uncategorized.forEach(it => {
+                html += '<option value="' + escape(it.value) + '">' + escape(it.label) + '</option>';
+            });
+            if (orderedCategories.length > 0) {
+                html += '</optgroup>';
+            }
+        }
+
+        this.ui.querySelector("#scene-selector").innerHTML = html;
     }
+
     
     this.updateSceneList(this.data.sceneDescList);
 

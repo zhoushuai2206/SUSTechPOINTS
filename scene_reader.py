@@ -14,6 +14,11 @@ root_dir = os.path.join(this_dir, "data")
 LIDAR_DIR_CANDIDATES = ["lidar_center", "rslidar_points", "lidar"]
 CAMERA_DIR_PREFIX = "camera_"
 
+# 新版数据目录布局：data/<category>/<clip_name>/... ，其中 category 表示
+# 该 clip 是单帧还是连续帧。为了向后兼容旧布局（data/<clip_name>/...），
+# 这里既扫描已知 category 目录，也扫描 data/ 下直接就是 clip 的目录。
+CATEGORY_DIR_NAMES = ("single_frame", "multi_frame")
+
 
 def _detect_lidar_dir(scene_dir):
     """检测场景目录中实际存在的雷达数据目录名，按 LIDAR_DIR_CANDIDATES 优先级尝试。"""
@@ -21,6 +26,16 @@ def _detect_lidar_dir(scene_dir):
         if os.path.isdir(os.path.join(scene_dir, d)):
             return d
     return None
+
+
+def _is_valid_clip_dir(clip_dir_abs):
+    """判定一个绝对路径是否是合法的 clip 目录（有雷达子目录，且未被 disable）。"""
+    if not os.path.isdir(clip_dir_abs):
+        return False
+    if os.path.exists(os.path.join(clip_dir_abs, "disable")):
+        return False
+    return _detect_lidar_dir(clip_dir_abs) is not None
+
 
 
 def get_all_scenes():
@@ -38,23 +53,48 @@ def get_all_scene_desc():
 
 
 def _is_valid_scene(s):
-    """有效场景必须为目录，包含已知雷达子目录之一，且未被 disable 文件禁用。"""
+    """有效场景必须为目录（可能带 category 前缀，如 "single_frame/clip_a"），
+    包含已知雷达子目录之一，且未被 disable 文件禁用。"""
+    # scene 名可能形如 "single_frame/2026_05_27-10_31_31"，
+    # 用 os.path.join 之后仍是 root_dir 下的合法路径。
     scene_dir = os.path.join(root_dir, s)
-    if not os.path.isdir(scene_dir):
-        return False
-    if os.path.exists(os.path.join(scene_dir, "disable")):
-        return False
-    if _detect_lidar_dir(scene_dir) is None:
-        return False
-    return True
+    return _is_valid_clip_dir(scene_dir)
 
 
 def get_scene_names():
+    """扫描 data 目录，返回全部有效 clip 的名称列表。
+
+    支持两种目录布局并可共存：
+    - 新布局：data/<category>/<clip_name>/...，其中 category ∈ {single_frame, multi_frame}
+      返回值形如 "single_frame/<clip_name>"，把 category 作为前缀带出去，
+      这样后端 os.path.join(root_dir, scene) 与前端 `data/${scene}/...`
+      的 URL 拼装都能自然工作。
+    - 旧布局：data/<clip_name>/...
+      返回值仍是纯 clip_name，保持向后兼容。
+    """
     if not os.path.isdir(root_dir):
         return []
-    scenes = [s for s in os.listdir(root_dir) if _is_valid_scene(s)]
+
+    scenes = []
+    for entry in os.listdir(root_dir):
+        entry_abs = os.path.join(root_dir, entry)
+        if not os.path.isdir(entry_abs):
+            continue
+
+        if entry in CATEGORY_DIR_NAMES:
+            # 新布局：进入 category 目录后继续枚举 clip
+            for clip in os.listdir(entry_abs):
+                clip_abs = os.path.join(entry_abs, clip)
+                if _is_valid_clip_dir(clip_abs):
+                    scenes.append(f"{entry}/{clip}")
+        else:
+            # 旧布局：data 下直接就是 clip
+            if _is_valid_clip_dir(entry_abs):
+                scenes.append(entry)
+
     scenes.sort()
     return scenes
+
 
 
 
