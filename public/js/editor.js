@@ -670,44 +670,51 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         case 'cm-auto-annotate-id':
             {
                 // 主视图右键 Auto Annotate → ID：
-                // 1. 保留"合理 id"：非空、正整数、在当前帧内唯一。
-                // 2. 对非法（重复/空/非正整数）的 box 按从小到大顺序分配最小可用正整数 id。
-                // 3. 完成后保存当前帧。
+                // Clip 级单调递增原则：整段 clip 里用过的 id 不能复用。
+                // 1. 收集当前 scene 所有已加载帧 + objIdManager（覆盖未加载帧）里的历史 id。
+                // 2. 保留当前帧"合理 id"（正整数、在本帧内唯一）。
+                // 3. 需要重分配的 box，从 max(clip_all_ids)+1 往后依次分配，确保单调递增。
+                // 4. 只保存当前帧。
                 let curWorld = this.data.world;
                 if (!curWorld || !curWorld.annotation || !curWorld.annotation.boxes) break;
 
                 const boxes = curWorld.annotation.boxes;
                 if (boxes.length === 0) break;
 
-                // 判断 id 是否是合理正整数
                 const isValidInt = (v) => {
                     if (v === null || v === undefined || v === '') return false;
                     const n = parseInt(v, 10);
                     return Number.isFinite(n) && n > 0 && String(n) === String(v).trim();
                 };
 
-                // 找出 id 重复的候选：先统计各 id 出现次数
-                const idCount = {};
-                boxes.forEach(b => {
-                    const id = b.obj_track_id;
-                    if (isValidInt(id)) {
-                        idCount[id] = (idCount[id] || 0) + 1;
-                    }
+                // 步骤 1：收集整段 clip（当前 scene）所有已使用 id
+                // —— 来自所有已加载 world
+                const currentScene = curWorld.frameInfo.scene;
+                const allClipIds = new Set();
+                this.data.worldList
+                    .filter(w => w.frameInfo.scene === currentScene && w.annotation && w.annotation.boxes)
+                    .forEach(w => {
+                        w.annotation.boxes.forEach(b => {
+                            if (isValidInt(b.obj_track_id))
+                                allClipIds.add(parseInt(b.obj_track_id, 10));
+                        });
+                    });
+                // —— 来自 objIdManager（覆盖未加载帧里的已知 id）
+                objIdManager.objectList.forEach(obj => {
+                    if (isValidInt(obj.id)) allClipIds.add(parseInt(obj.id, 10));
                 });
 
-                // 保留集合：id 合法且在本帧内唯一
-                const keptIds = new Set();
+                // 步骤 2：当前帧内 id 计数，找出"合理"的（正整数 + 本帧唯一）
+                const idCountInFrame = {};
                 boxes.forEach(b => {
-                    const id = b.obj_track_id;
-                    if (isValidInt(id) && idCount[id] === 1) {
-                        keptIds.add(parseInt(id, 10));
-                    }
+                    if (isValidInt(b.obj_track_id))
+                        idCountInFrame[b.obj_track_id] = (idCountInFrame[b.obj_track_id] || 0) + 1;
                 });
 
-                // 收集需要重新分配的 box（按 boxes 数组顺序，保持稳定）
+                // 步骤 3：需要重分配的 box
                 const needNewId = boxes.filter(b => {
                     const id = b.obj_track_id;
-                    return !isValidInt(id) || idCount[id] > 1;
+                    return !isValidInt(id) || idCountInFrame[id] > 1;
                 });
 
                 if (needNewId.length === 0) {
@@ -715,12 +722,13 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
                     break;
                 }
 
-                // 找最小可用正整数（从 1 开始，跳过已保留的）
-                let nextId = 1;
+                // 步骤 4：从 max(clip_all_ids)+1 开始分配（严格单调递增）
+                let nextId = allClipIds.size > 0 ? Math.max(...allClipIds) + 1 : 1;
                 const getNextAvailable = () => {
-                    while (keptIds.has(nextId)) nextId++;
+                    // allClipIds 已包含所有历史 id，直接从 nextId 顺序累加即可
+                    while (allClipIds.has(nextId)) nextId++;
                     const id = nextId;
-                    keptIds.add(id);
+                    allClipIds.add(id);
                     nextId++;
                     return id;
                 };
@@ -729,9 +737,7 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
                     const newId = getNextAvailable();
                     logger.log(`[auto-id] box(${b.obj_type}) id: "${b.obj_track_id}" → ${newId}`);
                     b.obj_track_id = newId;
-                    // 同步悬浮标签
                     this.floatLabelManager.set_object_track_id(b.obj_local_id, b.obj_track_id);
-                    // 注册到全局 id 管理器
                     objIdManager.addObject({ category: b.obj_type, id: b.obj_track_id });
                 });
 
@@ -739,7 +745,7 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
                 this.header.updateModifiedStatus();
                 this.on_load_world_finished(curWorld);
                 saveWorldList([curWorld]);
-                logger.log(`[auto-id] 已重分配 ${needNewId.length} 个 id，保存当前帧`);
+                logger.log(`[auto-id] 已重分配 ${needNewId.length} 个 id（从 clip 最大 id+1 开始），保存当前帧`);
             }
             break;
 
@@ -1374,6 +1380,36 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         }
     };
 
+    // 判断给定 id 在整段 clip 里除去 `exceptBox` 外是否已经被别的物体用过。
+    // 用于"id 单调递增"约束：clip 里已经用过的 id 不能再复用。
+    this.isIdUsedInClip = function(id, exceptBox)
+    {
+        if (id === null || id === undefined || id === '') return false;
+        const target = String(id).trim();
+
+        // 1. 遍历所有已加载 world
+        const currentScene = this.data.world ? this.data.world.frameInfo.scene : null;
+        const usedByOther = this.data.worldList
+            .filter(w => w.frameInfo.scene === currentScene && w.annotation && w.annotation.boxes)
+            .some(w => w.annotation.boxes.some(b =>
+                b !== exceptBox && String(b.obj_track_id).trim() === target
+            ));
+        if (usedByOther) return true;
+
+        // 2. 兜底：objIdManager 里也可能记录了当前未加载帧的 id（后端 /objs_of_scene 返回的）
+        if (objIdManager.objectList.some(o => String(o.id).trim() === target))
+        {
+            // objIdManager 里的 id 不一定跟当前 exceptBox 关联，需要额外确认这个 id
+            // 不是 exceptBox 自身现有的 id。exceptBox 的 id 已经在上一步排除过了，
+            // 所以这里只要 objIdManager 里出现，就当作被用过。
+            if (!exceptBox || String(exceptBox.obj_track_id).trim() !== target)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
     this.setObjectId = function(id)
     {
         this.selected_box.obj_track_id = id;
@@ -1391,10 +1427,37 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         });
     }
 
+    // 用户在输入框里改 track id：拦截"已用过的 id"，保证 clip 内 id 单调递增。
     this.object_track_id_changed= function(event){
         if (this.selected_box){
             var id = event.currentTarget.value;
-            this.setObjectId(id);            
+            var trimmed = String(id).trim();
+
+            // 空值直接接受（表示清空 id）
+            if (trimmed === '')
+            {
+                this.setObjectId(id);
+                return;
+            }
+
+            // 只允许正整数
+            var n = parseInt(trimmed, 10);
+            var isPositiveInt = Number.isFinite(n) && n > 0 && String(n) === trimmed;
+
+            // 已被别的 box 使用（当前帧或其他帧）→ 拒绝
+            if (isPositiveInt && this.isIdUsedInClip(trimmed, this.selected_box))
+            {
+                this.infoBox.show(
+                    "ID 已被使用",
+                    `ID ${trimmed} 在本 clip 中已经被其他物体使用过（即便当前视野里不存在）。<br>` +
+                    `为保证整段 clip 内 tracking id 单调递增，请换一个新 id，<br>` +
+                    `或点右侧生成 ID 按钮自动分配下一个可用值。`);
+                // 恢复输入框为原来的值
+                event.currentTarget.value = this.selected_box.obj_track_id || '';
+                return;
+            }
+
+            this.setObjectId(id);
         }
     };
 

@@ -83,13 +83,12 @@ bash setup_env.sh --cuda 12.1 --force
 
 ### 2.1 一键预标注（种子）：CenterPoint 全自动预刷
 
-前端有三个入口调用同一个后端：
+前端有 4 个入口，全都最终调 `GET /auto_annotate?scene=<clip>&frame=<frame>`，直连 `algos.detectors.openpcdet_detector.OpenPCDetDetector`（CenterPoint / nuScenes 10 类 + PointPillars backbone）：
 
-- **主视图（非 batch）**：**先选中一个 box**，右键 → **`Auto annotate in background`**（`cm-auto-ann-background`）。空白处右键不会出现这一项。
+- **主视图空白处右键 → `Auto Annotate` → `Detect`**（`cm-auto-annotate-detect`）：对当前帧点云跑 CenterPoint，**结果覆盖当前帧标签并自动保存到 `label/<frame>.json`**。菜单像 Play 一样带右侧下侧展开的子菜单，同一层还有 `ID`（下面 2.6 节说明）。**这是最常用的单帧一键补种入口。**
+- **主视图选中 box 后右键 → `Auto annotate in background`**（`cm-auto-ann-background`）：对该 box 对应的 tracking id 在整段 clip 上做插值 + 自动微调，只影响这一个 obj，不覆盖别的 box。
 - **Batch Edit 顶栏按钮**：右上角 `Auto`（对整批 M 标记帧统一跑）。
 - **Batch Edit 右键菜单**：`Auto annotate` / `Auto annotate (no rotation)`。
-
-三种入口都会发起 `GET /auto_annotate?scene=<clip>&frame=<frame>`，直连 `algos.detectors.openpcdet_detector.OpenPCDetDetector`（CenterPoint / nuScenes 10 类 + PointPillars backbone）。
 
 返回的候选框 JSON 通过 `class_map` 已经映射到前端枚举。当前 `obj_cfg.js` 只保留 8 类（Car / Truck / Bus / Motorcycle / Bicycle / Pedestrian / Cone / ForkLift），映射规则如下：
 
@@ -106,7 +105,7 @@ bash setup_env.sh --cuda 12.1 --force
 
 `ForkLift` 是本项目独有类别，CenterPoint（nuScenes 训练）不会输出，需要标注员在前端手动新建。前端 `guess_obj_type_by_dimension` 会再依据尺寸做一次兜底猜测。**候选框只是种子，方向和尺寸仍需手工过一遍**，尤其是行人/骑行者以及远端遮挡目标。
 
-想批量给整个 clip 预刷，直接在批量编辑（Batch Edit）里跑一次 `Auto`——它会对 M 标记帧逐帧调用同一后端。若 CenterPoint 推理耗时不理想，可在 `algos/detector_config.json` 里把 `score_thresh` 从 0.3 调高到 0.4~0.5 减少后处理，或换 `device: "cpu"` 用于无 GPU 机器（速度会掉到秒级/帧）。
+想批量给整个 clip 预刷，直接在批量编辑（Batch Edit）里跑一次 `Auto`——它会对 M 标记帧逐帧调用同一后端。也可以在每一关键帧上依次右键 `Auto Annotate → Detect` 逐帧跑，得到干净的检测种子后再进 Batch Edit 做插值。若 CenterPoint 推理耗时不理想，可在 `algos/detector_config.json` 里把 `score_thresh` 从 0.3 调高到 0.4~0.5 减少后处理，或换 `device: "cpu"` 用于无 GPU 机器（速度会掉到秒级/帧）。
 
 调优路径：
 - 想换权重（例如自家 fine-tune 版）：把 `.pth` 覆盖 `algos/models/centerpoint_pp.pth` 后 `bash start.sh --stop && bash start.sh`。
@@ -136,6 +135,28 @@ bash setup_env.sh --cuda 12.1 --force
 `Ctrl + S`。
 
 关键帧标完，clip 的"字典"就有了：每个物体的类别、ID、参考尺寸都固定，后面只是把它们复制并微调到剩余帧。
+
+### 2.6 一键分配 track id：`Auto Annotate → ID`
+
+`Auto Annotate` 子菜单里的 `ID`（`cm-auto-annotate-id`）用于修复当前帧里非法或缺失的 tracking id，遵循 **clip 级 id 单调递增** 原则：
+
+**核心原则**：整段 clip 里历史上用过的 id，即便对应物体已经不在当前视野里，也不能复用。id 只允许从历史最大值往后增长。
+
+**自动分配逻辑**：
+1. 收集整段 clip（当前 scene）所有已使用 id：遍历已加载帧所有 box 的 `obj_track_id` + `objIdManager`（覆盖未加载帧的 id 记录，来自后端 `/objs_of_scene`）。
+2. 保留当前帧"合理 id"：正整数且在本帧内唯一。
+3. 需要重分配的 box（空 id / 非正整数 / 本帧重复）：从 `max(clip_all_ids) + 1` 开始往后顺序分配，保证严格递增、不复用历史 id。
+4. 只保存当前帧，不连带修改其他帧。
+5. 日志窗输出：`[auto-id] box(Car) id: "3" → 27`，方便事后审查。
+
+**手动输入校验**：在 track id 输入框里手动输入 id 时，如果该 id 已被 clip 里其他物体使用过（哪怕对应帧还没加载），会弹出提示并恢复原值，防止复用历史 id。
+
+典型场景：
+1. `Detect` 刚跑完，一堆新框还没 id → 直接跑 `ID`，新框会从 clip 历史最大 id+1 开始依次编号。
+2. 从别处拷贝的 label 出现 id 冲突 → 一键把冲突方改到安全的新 id。
+3. 人工新建时手滑输了已存在的 id → 输入框立即提示并恢复原值。
+
+**注意**：这个操作只修当前帧，跨帧的 tracking 关联仍要靠 Batch Edit 的 `Follow Ref` / `Change ID to Ref in all frames`。典型工作流：先跑 `Detect` 补框 → 跑 `ID` 把 id 赋好 → 用 Batch Edit 把跨帧的同一物体 id 统一。
 
 ---
 
@@ -214,6 +235,7 @@ python tools/check_labels.py data/2026_05_27-10_32_01
 - CenterPoint 有时会输出 nuScenes 里的 `barrier` 类，因为它不在 obj_cfg.js 枚举里，前端会显示原始类名，标注员看到时改成合适类别或直接删除即可。
 - 如果 CenterPoint 推理占显存太多，可将 `algos/detector_config.json` 里 `device` 改成 `cuda:1` 或 `cpu`；也可以在 `class_names` 里去掉不关心的类以减小后处理开销。
 - `motion_state/` 和 `imu/` 目录当前工程未参与标注流水线，可用作后续做基于 ego motion 的运动补偿或轨迹平滑（自定义脚本）。
+- Label 文本（如 `Car 16`）现在锚定在 box **车头顶棱的中点上方**（`floatlabel.js` 的 `compute_best_position` 取 box 顶点 2/3 的中点，CSS 用 `transform: translate(-50%, -100%)` 把 label 底边中心贴上去）。BEV 里就是每个 box 前边正上方，用来直观判断朝向；侧视/透视也会跟随 box 旋转贴到真实车头棱上。
 
 ---
 
