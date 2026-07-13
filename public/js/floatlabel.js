@@ -546,9 +546,13 @@ class FloatLabelManager {
         var width = this.container.clientWidth, height = this.container.clientHeight;
         var widthHalf = width / 2, heightHalf = height / 2;
 
+        // 锚点已经是 box 前顶边中点。像素级偏移改为水平居中（label 的 CSS
+        // top/left 是左上角，这里把它整体左移到 label 宽度的中间需要在 setPos
+        // 的调用点做，因为这里拿不到 label 宽度）。y 方向向上留一点缝，
+        // 让 label 贴在前顶边上方。
         var ret={
-            x: ( p.x * widthHalf ) + widthHalf + 10,
-            y: - ( p.y * heightHalf ) + heightHalf - 10,
+            x: ( p.x * widthHalf ) + widthHalf,
+            y: - ( p.y * heightHalf ) + heightHalf - 2,
             out_view: p.x>0.9 || p.x<-0.6 || p.y<-0.9 || p.y>0.9 || p.z< -1 || p.z > 1,
             // p.x<-0.6 to prevent it from appearing ontop of sideviews.
         }
@@ -561,35 +565,24 @@ class FloatLabelManager {
         var camera_p = [0,1,2,3,4,5,6,7].map(function(i){
             return new THREE.Vector3(vertices[i*4+0], vertices[i*4+1], vertices[i*4+2]);
         });
-        
+
         camera_p.forEach(function(x){
             x.project(_self.view.camera);
         });
-        
-        var visible_p = camera_p;
 
-        // 原逻辑：独立取 max_x / max_y，会产生一个离 box 较远的虚拟角点。
-        // 改为：先算所有投影顶点的重心（屏幕中心），再向"最右上"方向移动 1/4 距离，
-        // 使标签贴近 box 边缘但不重叠。
-        var best_p = {x:-1, y: -1, z: -2};
-        visible_p.forEach(function(p){
-            if (p.x > best_p.x) best_p.x = p.x;
-            if (p.y > best_p.y) best_p.y = p.y;
-            if (p.z > best_p.z) best_p.z = p.z;
-        });
-
-        // 所有顶点的重心
-        var cx = 0, cy = 0;
-        visible_p.forEach(function(p){ cx += p.x; cy += p.y; });
-        cx /= visible_p.length;
-        cy /= visible_p.length;
-
-        // 向最大角方向移动 1/4 距离（原来是 1 倍，现在是 0.25 倍）
-        var ratio = 0.25;
+        // 把 label 固定到 box "前顶长边"的中点：
+        // psr_to_xyz 顶点编号：
+        //   0: front-left-bottom  (+x,+y,-z)
+        //   1: front-right-bottom (+x,-y,-z)
+        //   2: front-right-top    (+x,-y,+z)
+        //   3: front-left-top     (+x,+y,+z)
+        // 前顶边 = 顶点 2 ↔ 顶点 3 之间的线，取中点做标签锚点。
+        var p2 = camera_p[2];
+        var p3 = camera_p[3];
         return {
-            x: cx + (best_p.x - cx) * ratio,
-            y: cy + (best_p.y - cy) * ratio,
-            z: best_p.z,
+            x: (p2.x + p3.x) / 2,
+            y: (p2.y + p3.y) / 2,
+            z: (p2.z + p3.z) / 2,
         };
     }
 }

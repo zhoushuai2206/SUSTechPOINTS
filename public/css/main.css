@@ -566,6 +566,9 @@ dynamic set obj-type css has higher priority than this one.
 	color: #0000ff;
 	position: absolute;
 	display:inline-flex;
+	/* 锚点位于 box 前顶边中点：把 label 整体向左移半宽、向上移全高，
+	   使 label 底边中点正好贴在锚点线上。 */
+	transform: translate(-50%, -100%);
 }
 
 
