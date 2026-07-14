@@ -5,7 +5,7 @@
     "backend": "openpcdet",
 
     "openpcdet": {
-        "config_path": "third_party/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_dyn_pp_centerpoint.yaml",
+        "config_path": "algos/third_party/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_dyn_pp_centerpoint.yaml",
         "ckpt_path":   "algos/models/centerpoint_pp.pth",
         "class_names": [
             "car", "truck", "construction_vehicle", "bus", "trailer",

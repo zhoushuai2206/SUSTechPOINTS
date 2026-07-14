@@ -1035,26 +1035,6 @@ td {
 }
 
 
-/*crop scene */
-#crop-scene-wrapper {
-	width: 0%;
-	height: 0%;
-}
-
-#crop-scene-wrapper #view {
-	left: 200px;
-	top: 200px;
-
-	height: 400px; /*60%;*/
-	width: 600px; /*60%; */
-}
-
-
-#crop-scene-wrapper #content {
-	padding-left: 5px;
-}
-
-
 #log-wrapper {
 	width: 0%;
 	height: 0%;

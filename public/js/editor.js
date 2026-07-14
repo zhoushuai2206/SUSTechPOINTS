@@ -19,7 +19,6 @@ import {Calib} from "./calib.js";
 import {Trajectory} from "./trajectory.js";
 import { ContextMenu } from './context_menu.js';
 import { InfoBox } from './info_box.js';
-import {CropScene} from './crop_scene.js';
 import { ConfigUi } from './config_ui.js';
 import { MovableView } from './popup_dialog.js';
 import {globalKeyDownManager} from './keydown_manager.js';
@@ -166,11 +165,6 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
         this.infoBox = new InfoBox(
             this.editorUi.querySelector("#info-wrapper")
-        );
-
-        this.cropScene = new CropScene(
-            this.editorUi.querySelector("#crop-scene-wrapper"),
-            this
         );
 
         this.contextMenu = new ContextMenu(this.editorUi.querySelector("#context-menu-wrapper"));        
@@ -633,27 +627,6 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         case 'cm-first-frame':
             this.first_frame();
             break;
-        case 'cm-go-to-10hz':
-            this.load_world(this.data.world.frameInfo.scene+"_10hz", this.data.world.frameInfo.frame)
-
-            // {
-            //     let link = document.createElement("a");
-            //     //link.download=`${this.data.world.frameInfo.scene}-${this.data.world.frameInfo.frame}-webgl`;
-            //     link.href="http://localhost";
-            //     link.target="_blank";
-            //     link.click();
-            // }
-            break;
-        case 'cm-go-to-full-2hz':
-            this.load_world(this.data.world.frameInfo.scene+"_full_2hz", this.data.world.frameInfo.frame)
-            break;
-
-        case 'cm-go-to-2hz':
-            this.load_world(this.data.world.frameInfo.scene.split("_")[0], this.data.world.frameInfo.frame)
-            break;
-        
-
-            
         case 'cm-auto-annotate-detect':
             {
                 // 主视图右键 Auto Annotate → Detect：对当前帧点云调 CenterPoint，

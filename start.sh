@@ -65,15 +65,18 @@ cd "$SCRIPT_DIR"
 
 ENV_NAME="${SUSTECH_CONDA_ENV:-annotate}"
 ENTRY="main.py"
-CONF="server.conf"
-LOG_FILE="server.log"
-PID_FILE=".server.pid"
-STAMP_FILE=".setup_done"
-SETUP_SCRIPT="setup_env.sh"
+CONF="server/server.conf"
+LOG_FILE="server/server.log"
+PID_FILE="server/.server.pid"
+STAMP_FILE="setup/.setup_done"
+SETUP_SCRIPT="setup/setup_env.sh"
 WEIGHT_FILE="algos/models/centerpoint_pp.pth"
-PCDET_DIR="third_party/OpenPCDet"
+PCDET_DIR="algos/third_party/OpenPCDet"
 HOST="127.0.0.1"
 PORT="8081"
+
+# 确保 server 目录存在（用于 pid / log）
+mkdir -p server
 
 # ---------- 从 server.conf 提取端口 ----------
 if [ -f "$CONF" ]; then

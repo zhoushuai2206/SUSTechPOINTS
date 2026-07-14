@@ -15,12 +15,34 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 from .base import BaseDetector, Detection  # noqa: F401
 
 
-_DEFAULT_CFG_FILE = Path(__file__).resolve().parents[1] / "detector_config.json"
+# 项目根目录：<repo>/algos/detectors/__init__.py → parents[2] 是 <repo>
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_CFG_FILE = _PROJECT_ROOT / "algos" / "detector_config.json"
+
+
+def _ensure_pcdet_on_sys_path():
+    """把 OpenPCDet 源码目录加到 sys.path，避免依赖 conda env 里的 pcdet.egg-link
+    （egg-link 记录的是绝对路径，跨机器/跨用户拷贝会失效）。"""
+    pcdet_dir = _PROJECT_ROOT / "algos" / "third_party" / "OpenPCDet"
+    p = str(pcdet_dir)
+    if pcdet_dir.is_dir() and p not in sys.path:
+        sys.path.insert(0, p)
+
+
+def _resolve_repo_path(p: str) -> str:
+    """把 detector_config.json 里的相对路径解析为 <repo>/... 的绝对路径。
+    这样服务无论从哪个 CWD 启动都能定位到权重和配置。"""
+    if not p:
+        return p
+    if os.path.isabs(p):
+        return p
+    return str(_PROJECT_ROOT / p)
 
 
 def _load_config() -> dict:
@@ -41,7 +63,7 @@ def _instantiate(cfg: dict) -> BaseDetector:
             f"当前工程仅支持 backend=openpcdet（CenterPoint）；收到: {backend}"
         )
 
-    sub = cfg.get("openpcdet") or {}
+    sub = dict(cfg.get("openpcdet") or {})
     required = ("config_path", "ckpt_path")
     missing = [k for k in required if not sub.get(k)]
     if missing:
@@ -49,18 +71,25 @@ def _instantiate(cfg: dict) -> BaseDetector:
             f"detector_config.json 的 openpcdet 段缺少字段: {missing}"
         )
 
-    ckpt_path = sub.get("ckpt_path")
-    if ckpt_path and not os.path.isfile(ckpt_path):
+    # 相对路径统一按项目根解析，避免依赖 CWD
+    sub["config_path"] = _resolve_repo_path(sub["config_path"])
+    sub["ckpt_path"] = _resolve_repo_path(sub["ckpt_path"])
+
+    ckpt_path = sub["ckpt_path"]
+    if not os.path.isfile(ckpt_path):
         raise FileNotFoundError(
             f"CenterPoint 权重不存在: {ckpt_path}. "
-            "请运行 `bash setup_env.sh` 自动下载，或手动放置到该路径。"
+            "请运行 `bash setup/setup_env.sh` 自动下载，或手动放置到该路径。"
         )
-    config_path = sub.get("config_path")
-    if config_path and not os.path.isfile(config_path):
+    config_path = sub["config_path"]
+    if not os.path.isfile(config_path):
         raise FileNotFoundError(
             f"OpenPCDet 配置不存在: {config_path}. "
-            "请先运行 `bash setup_env.sh` 拉取 third_party/OpenPCDet。"
+            "请先运行 `bash setup/setup_env.sh` 拉取 algos/third_party/OpenPCDet。"
         )
+
+    # 拉 pcdet 到 sys.path，跨机器拷贝也能 import
+    _ensure_pcdet_on_sys_path()
 
     from .openpcdet_detector import OpenPCDetDetector
     return OpenPCDetDetector(**sub)

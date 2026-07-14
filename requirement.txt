@@ -1,7 +1,0 @@
-# SUSTechPOINTS Web 服务依赖（与深度模型无关的部分）
-# 深度学习相关依赖（torch / spconv / OpenPCDet）由 setup_env.sh 单独处理。
-cherrypy
-jinja2
-cheroot != 8.4.4
-numpy<2
-filterpy

@@ -56,13 +56,6 @@ class ConfigUi{
         //     this.editor.calib.reset_calibration();
         //     return true;
         // }
-
-        "#cfg-crop-scene": (event)=>{
-            this.editor.cropScene.show();
-
-            return true;
-        },
-        
     };
 
     changeableItems = {

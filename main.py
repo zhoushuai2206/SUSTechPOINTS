@@ -1,16 +1,25 @@
-import random
-import string
+"""SUSTechPOINTS 主入口。只保留 CCRS 数据支持相关的 endpoint。"""
 
-import cherrypy
-import os
 import json
-from jinja2 import Environment, FileSystemLoader
-env = Environment(loader=FileSystemLoader('./'))
-
 import os
 import sys
-import scene_reader
-from tools import check_labels  as check
+
+# 把 CWD 切到本文件所在目录，让 server.conf / algos/detector_config.json /
+# tools/scene_reader.py 里所有相对路径（`./data`、`./public` 等）都以项目根为准，
+# 避免用户从别的目录运行 `python /path/to/main.py` 时找不到文件。
+_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+os.chdir(_PROJECT_ROOT)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+import cherrypy
+from jinja2 import Environment, FileSystemLoader
+
+from algos import pre_annotate
+from tools import check_labels as check
+from tools import scene_reader
+
+env = Environment(loader=FileSystemLoader(_PROJECT_ROOT))
 
 
 def _set_no_cache_headers():
@@ -23,331 +32,167 @@ def _set_no_cache_headers():
 cherrypy.tools.no_cache = cherrypy.Tool('before_finalize', _set_no_cache_headers)
 
 
-# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# sys.path.append(BASE_DIR)
-
-#sys.path.append(os.path.join(BASE_DIR, './algos'))
-#import algos.rotation as rotation
-from algos import pre_annotate
-
-
-#sys.path.append(os.path.join(BASE_DIR, '../tracking'))
-#import algos.trajectory as trajectory
-
-# extract_object_exe = "~/code/pcltest/build/extract_object"
-# registration_exe = "~/code/go_icp_pcl/build/test_go_icp"
-
-# sys.path.append(os.path.join(BASE_DIR, './tools'))
-# import tools.dataset_preprocess.crop_scene as crop_scene
-
-class Root(object):
+class Root:
     @cherrypy.expose
     def index(self, scene="", frame=""):
-      tmpl = env.get_template('index.html')
-      return tmpl.render()
-  
-    @cherrypy.expose
-    def icon(self):
-      tmpl = env.get_template('test_icon.html')
-      return tmpl.render()
-
-    @cherrypy.expose
-    def ml(self):
-      tmpl = env.get_template('test_ml.html')
-      return tmpl.render()
-  
-    @cherrypy.expose
-    def reg(self):
-      tmpl = env.get_template('registration_demo.html')
-      return tmpl.render()
-
-    @cherrypy.expose
-    def view(self, file):
-      tmpl = env.get_template('view.html')
-      return tmpl.render()
-
-    # @cherrypy.expose
-    # def saveworld(self, scene, frame):
-
-    #   # cl = cherrypy.request.headers['Content-Length']
-    #   rawbody = cherrypy.request.body.readline().decode('UTF-8')
-
-    #   with open("./data/"+scene +"/label/"+frame+".json",'w') as f:
-    #     f.write(rawbody)
-      
-    #   return "ok"
+        tmpl = env.get_template('index.html')
+        return tmpl.render()
 
     @cherrypy.expose
     def saveworldlist(self):
+        # 读取完整请求体：readline() 遇到换行会截断，read() 才能拿到全部 JSON
+        rawbody = cherrypy.request.body.read().decode('UTF-8')
+        try:
+            data = json.loads(rawbody)
+        except Exception as e:
+            cherrypy.response.status = 400
+            print(f"[main] saveworldlist invalid json: {e}")
+            return "invalid json"
 
-      # 读取完整请求体：readline() 遇到换行会截断，read() 才能拿到全部 JSON
-      rawbody = cherrypy.request.body.read().decode('UTF-8')
-      try:
-        data = json.loads(rawbody)
-      except Exception as e:
-        cherrypy.response.status = 400
-        print(f"[main] saveworldlist invalid json: {e}")
-        return "invalid json"
+        try:
+            for d in data:
+                scene = d["scene"]
+                frame = d["frame"]
+                ann = d["annotation"]
+                label_dir = os.path.join("./data", scene, "label")
+                # CCRS clip 里 label 子目录可能不存在，按需创建
+                os.makedirs(label_dir, exist_ok=True)
+                filename = os.path.join(label_dir, frame + ".json")
+                with open(filename, 'w') as f:
+                    json.dump(ann, f, indent=2, sort_keys=True)
+        except Exception as e:
+            cherrypy.response.status = 500
+            print(f"[main] saveworldlist error: {e}")
+            return f"save failed: {e}"
 
-      try:
-        for d in data:
-          scene = d["scene"]
-          frame = d["frame"]
-          ann = d["annotation"]
-          label_dir = os.path.join("./data", scene, "label")
-          # 兼容 CCRS 等新数据目录：label 子目录可能不存在，按需创建
-          os.makedirs(label_dir, exist_ok=True)
-          filename = os.path.join(label_dir, frame + ".json")
-          with open(filename, 'w') as f:
-            json.dump(ann, f, indent=2, sort_keys=True)
-      except Exception as e:
-        cherrypy.response.status = 500
-        print(f"[main] saveworldlist error: {e}")
-        return f"save failed: {e}"
-
-      return "ok"
-
-
-    @cherrypy.expose
-    @cherrypy.tools.json_out()
-    def cropscene(self):
-      rawbody = cherrypy.request.body.readline().decode('UTF-8')
-      data = json.loads(rawbody)
-      
-      rawdata = data["rawSceneId"]
-
-      timestamp = rawdata.split("_")[0]
-
-      print("generate scene")
-      log_file = "temp/crop-scene-"+timestamp+".log"
-
-      cmd = "python ./tools/dataset_preprocess/crop_scene.py generate "+ \
-        rawdata[0:10]+"/"+timestamp + "_preprocessed/dataset_2hz " + \
-        "- " +\
-        data["startTime"] + " " +\
-        data["seconds"] + " " +\
-        "\""+ data["desc"] + "\"" +\
-        "> " + log_file + " 2>&1"
-      print(cmd)
-
-      code = os.system(cmd)
-
-      with open(log_file) as f:
-        log = list(map(lambda s: s.strip(), f.readlines()))
-
-      os.system("rm "+log_file)
-      
-      return {"code": code,
-              "log": log
-              }
-
+        return "ok"
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def checkscene(self, scene):
-      ck = check.LabelChecker(os.path.join("./data", scene))
-      ck.check()
-      print(ck.messages)
-      return ck.messages
+        ck = check.LabelChecker(os.path.join("./data", scene))
+        ck.check()
+        print(ck.messages)
+        return ck.messages
 
-
-    # @cherrypy.expose
-    # @cherrypy.tools.json_out()
-    # def interpolate(self, scene, frame, obj_id):
-    #   # interpolate_num = trajectory.predict(scene, obj_id, frame, None)
-    #   # return interpolate_num
-    #   return 0
-
-    # data  N*3 numpy array
+    # data: N*3 numpy array
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def predict_rotation(self):
-      rawbody = cherrypy.request.body.readline().decode('UTF-8')
-      try:
-        data = json.loads(rawbody)
-      except Exception:
-        cherrypy.response.status = 400
-        return {"error": "invalid json"}
-      pts = data.get("points") if isinstance(data, dict) else None
-      if pts is None:
-        cherrypy.response.status = 400
-        return {"error": "field 'points' missing"}
-      return {"angle": pre_annotate.predict_yaw(pts)}
+        rawbody = cherrypy.request.body.readline().decode('UTF-8')
+        try:
+            data = json.loads(rawbody)
+        except Exception:
+            cherrypy.response.status = 400
+            return {"error": "invalid json"}
+        pts = data.get("points") if isinstance(data, dict) else None
+        if pts is None:
+            cherrypy.response.status = 400
+            return {"error": "field 'points' missing"}
+        return {"angle": pre_annotate.predict_yaw(pts)}
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def ml_status(self):
-      """探查当前半自动标注后端加载状态，方便前端/运维排查。"""
-      return pre_annotate.get_status()
+        """探查当前半自动标注后端加载状态，方便前端/运维排查。"""
+        return pre_annotate.get_status()
 
     def _resolve_pcd_path(self, scene, frame):
-      """查找 pcd 文件，兼容新/旧目录布局。
-
-      优先使用 scene_reader 报告的 lidar_dir/lidar_ext；找不到时依次尝试
-      常见目录（rslidar_points/lidar）与后缀（.pcd/.bin）。
-      """
-      meta = scene_reader.get_one_scene(scene) or {}
-      preferred_dir = meta.get("lidar_dir") or "lidar"
-      preferred_ext = meta.get("lidar_ext") or ".pcd"
-
-      # 去重同时保持顺序
-      seen = set()
-      candidates = []
-      def _add(d, e):
-        key = (d, e)
-        if key in seen:
-          return
-        seen.add(key)
-        candidates.append(key)
-
-      _add(preferred_dir, preferred_ext)
-      for d in (preferred_dir, "rslidar_points", "lidar"):
-        for e in (preferred_ext, ".pcd", ".bin"):
-          _add(d, e)
-
-      for d, e in candidates:
-        p = os.path.join("./data", scene, d, frame + e)
-        if os.path.isfile(p):
-          return p
-
-      return os.path.join("./data", scene, preferred_dir, frame + preferred_ext)
+        """按 scene_reader 报告的 lidar 目录/后缀拼装 pcd 文件路径。"""
+        meta = scene_reader.get_one_scene(scene) or {}
+        lidar_dir = meta.get("lidar_dir") or "lidar_center"
+        lidar_ext = meta.get("lidar_ext") or ".pcd"
+        return os.path.join("./data", scene, lidar_dir, frame + lidar_ext)
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def auto_annotate(self, scene, frame):
-      print("auto annotate ", scene, frame)
-      pcd_path = self._resolve_pcd_path(scene, frame)
-      if not os.path.isfile(pcd_path):
-        cherrypy.response.status = 404
-        return {"error": f"pcd not found: {pcd_path}"}
-      try:
-        return pre_annotate.annotate_file(pcd_path)
-      except Exception as e:
-        cherrypy.response.status = 500
-        # 详细错误只在服务器日志里，返回给前端的是简明信息
-        print(f"[main] auto_annotate error: {e}")
-        return {"error": f"auto_annotate failed: {e}"}
+        print("auto annotate", scene, frame)
+        pcd_path = self._resolve_pcd_path(scene, frame)
+        if not os.path.isfile(pcd_path):
+            cherrypy.response.status = 404
+            return {"error": f"pcd not found: {pcd_path}"}
+        try:
+            return pre_annotate.annotate_file(pcd_path)
+        except Exception as e:
+            cherrypy.response.status = 500
+            # 详细错误只在服务器日志里，返回给前端的是简明信息
+            print(f"[main] auto_annotate error: {e}")
+            return {"error": f"auto_annotate failed: {e}"}
 
-
-
-    @cherrypy.expose    
+    @cherrypy.expose
     @cherrypy.tools.json_out()
     def load_annotation(self, scene, frame):
-      return scene_reader.read_annotations(scene, frame)
+        return scene_reader.read_annotations(scene, frame)
 
-
-    @cherrypy.expose    
+    @cherrypy.expose
     @cherrypy.tools.json_out()
     def load_ego_pose(self, scene, frame):
-      return scene_reader.read_ego_pose(scene, frame)
+        return scene_reader.read_ego_pose(scene, frame)
 
-
-    @cherrypy.expose    
+    @cherrypy.expose
     @cherrypy.tools.json_out()
     def loadworldlist(self):
-      rawbody = cherrypy.request.body.readline().decode('UTF-8')
-      worldlist = json.loads(rawbody)
+        rawbody = cherrypy.request.body.readline().decode('UTF-8')
+        worldlist = json.loads(rawbody)
+        return [{
+            "scene": w["scene"],
+            "frame": w["frame"],
+            "annotation": scene_reader.read_annotations(w["scene"], w["frame"]),
+        } for w in worldlist]
 
-      anns = list(map(lambda w:{
-                      "scene": w["scene"],
-                      "frame": w["frame"],
-                      "annotation":scene_reader.read_annotations(w["scene"], w["frame"])},
-                      worldlist))
-
-      return anns
-        
-
-    # @cherrypy.expose    
-    # @cherrypy.tools.json_out()
-    # def auto_adjust(self, scene, ref_frame, object_id, adj_frame):
-      
-    #   #os.chdir("./temp")
-    #   os.system("rm ./temp/src.pcd ./temp/tgt.pcd ./temp/out.pcd ./temp/trans.json")
-
-
-    #   tgt_pcd_file = "./data/"+scene +"/lidar/"+ref_frame+".pcd"
-    #   tgt_json_file = "./data/"+scene +"/label/"+ref_frame+".json"
-
-    #   src_pcd_file = "./data/"+scene +"/lidar/"+adj_frame+".pcd"      
-    #   src_json_file = "./data/"+scene +"/label/"+adj_frame+".json"
-
-    #   cmd = extract_object_exe +" "+ src_pcd_file + " " + src_json_file + " " + object_id + " " +"./temp/src.pcd"
-    #   print(cmd)
-    #   os.system(cmd)
-
-    #   cmd = extract_object_exe + " "+ tgt_pcd_file + " " + tgt_json_file + " " + object_id + " " +"./temp/tgt.pcd"
-    #   print(cmd)
-    #   os.system(cmd)
-
-    #   cmd = registration_exe + " ./temp/tgt.pcd ./temp/src.pcd ./temp/out.pcd ./temp/trans.json"
-    #   print(cmd)
-    #   os.system(cmd)
-
-    #   with open("./temp/trans.json", "r") as f:
-    #     trans = json.load(f)
-    #     print(trans)
-    #     return trans
-
-    #   return {}
-
-    @cherrypy.expose    
+    @cherrypy.expose
     @cherrypy.tools.json_out()
     def datameta(self):
-      return scene_reader.get_all_scenes()
-    
+        return scene_reader.get_all_scenes()
 
-    @cherrypy.expose    
+    @cherrypy.expose
     @cherrypy.tools.json_out()
     def scenemeta(self, scene):
-      return scene_reader.get_one_scene(scene)
+        return scene_reader.get_one_scene(scene)
 
-    @cherrypy.expose    
+    @cherrypy.expose
     @cherrypy.tools.json_out()
     def get_all_scene_desc(self):
-      return scene_reader.get_all_scene_desc()
+        return scene_reader.get_all_scene_desc()
 
-    @cherrypy.expose    
+    @cherrypy.expose
     @cherrypy.tools.json_out()
     def objs_of_scene(self, scene):
-      return self.get_all_objs(os.path.join("./data",scene))
+        return self.get_all_objs(os.path.join("./data", scene))
 
     def get_all_objs(self, path):
-      label_folder = os.path.join(path, "label")
-      if not os.path.isdir(label_folder):
-        return []
-        
-      files = os.listdir(label_folder)
+        label_folder = os.path.join(path, "label")
+        if not os.path.isdir(label_folder):
+            return []
 
-      files = filter(lambda x: x.split(".")[-1]=="json", files)
+        files = [f for f in os.listdir(label_folder) if f.split(".")[-1] == "json"]
+
+        def file_2_objs(f):
+            with open(f) as fd:
+                boxes = json.load(fd)
+                return [{"category": b["obj_type"], "id": b["obj_id"]} for b in boxes]
+
+        # {category-id : {category, id, count}}
+        all_objs = {}
+        for f in files:
+            for o in file_2_objs(os.path.join(label_folder, f)):
+                k = f"{o['category']}-{o['id']}"
+                if all_objs.get(k):
+                    all_objs[k]['count'] += 1
+                else:
+                    all_objs[k] = {
+                        "category": o["category"],
+                        "id": o["id"],
+                        "count": 1,
+                    }
+
+        return list(all_objs.values())
 
 
-      def file_2_objs(f):
-          with open(f) as fd:
-              boxes = json.load(fd)
-              objs = [x for x in map(lambda b: {"category":b["obj_type"], "id": b["obj_id"]}, boxes)]
-              return objs
-
-      boxes = map(lambda f: file_2_objs(os.path.join(path, "label", f)), files)
-
-      # the following map makes the category-id pairs unique in scene
-      all_objs={}
-      for x in boxes:
-          for o in x:
-              
-              k = str(o["category"])+"-"+str(o["id"])
-
-              if all_objs.get(k):
-                all_objs[k]['count']= all_objs[k]['count']+1
-              else:
-                all_objs[k]= {
-                  "category": o["category"],
-                  "id": o["id"],
-                  "count": 1
-                }
-
-      return [x for x in  all_objs.values()]
+_SERVER_CONF = os.path.join(_PROJECT_ROOT, "server", "server.conf")
 
 if __name__ == '__main__':
-    cherrypy.quickstart(Root(), '/', config="server.conf")
+    cherrypy.quickstart(Root(), '/', config=_SERVER_CONF)
 else:
-    application = cherrypy.Application(Root(), '/', config="server.conf")
+    application = cherrypy.Application(Root(), '/', config=_SERVER_CONF)

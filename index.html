@@ -384,21 +384,6 @@
 								</div>
 
 
-								<div class="menu-item menu-seperator"></div>
-								<div class="menu-item" id="cm-go-to-10hz">
-									<div class="menu-item-icon"></div>
-									<div class="menu-item-text">Full 10hz scene</div>
-								</div>
-								
-								<div class="menu-item" id="cm-go-to-full-2hz">
-									<div class="menu-item-icon"></div>
-									<div class="menu-item-text">Full 2Hz scene</div>
-								</div>
-
-								<div class="menu-item" id="cm-go-to-2hz">
-									<div class="menu-item-icon"></div>
-									<div class="menu-item-text">2Hz scene</div>
-								</div>
 							</div>
 						</div>
 						
@@ -921,10 +906,6 @@
 										</div>							
 
 									</div>
-									
-									<div class="menu-item" id="cfg-crop-scene">
-										<div class="menu-item-text">Crop scene</div>				
-									</div>
 								</div>
 							</div>
 
@@ -1017,50 +998,6 @@
 						<div id="info-bottom-buttons">
 							<button id="btn-no">No</button>
 							<button id="btn-yes">Yes</button>							
-						</div>
-					</div>
-				</div>
-
-				<div id="crop-scene-wrapper" class="popup-window-wrapper" tabindex='-1'>
-					<div id="view">
-						<div id="header">
-							<span id="title">Crop scene</span>
-							<div id="buttons">
-								<div id="btn-restore" class="ui-button"  title="restore">
-									<!-- <span class="ui-icon ui-icon-trash"></span> -->
-									<svg viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" focusable="false" class="svg-button"><g>
-										<rect x = 6 y = 6 width=12 height=12></rect>
-									</g></svg>
-								</div>
-								<div id="btn-maximize" class="ui-button"  title="maximize">
-									<!-- <span class="ui-icon ui-icon-trash"></span> -->
-									<svg viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" focusable="false" class="svg-button"><g>
-										<rect x = 4 y = 4 width=16 height=16></rect>
-									</g></svg>
-								</div>
-								<div id="btn-exit" class="ui-button"  title="exit">
-									<!-- <span class="ui-icon ui-icon-trash"></span> -->
-									<svg viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" focusable="false" class="svg-button"><g>
-										<path d="M4 4 L 20 20 M 20 4 L 4 20"></path>
-									</g></svg>
-								</div>
-							</div>
-						</div>
-						<div id="content">
-							<div>
-								<!-- <div><span>scene-id:</span><input id="scene-id" /></div> -->
-								<div><span>desc:</span><input id="scene-desc" /></div>
-								<div><span>start time:</span><input id="scene-start-time" /></div>
-								<div><span>seconds:</span><input id="scene-seconds" /></div>
-
-								<div>
-									<button id="btn-generate">generate</button>									
-								</div>
-
-								<div id="log">
-
-								</div>
-							</div>
 						</div>
 					</div>
 				</div>
@@ -1334,7 +1271,6 @@
 			</div>
 		</template>
 
-		<script src="/static/js/lib/ml/tf.min.js"></script>
 		<script type="module"  src="/static/js/main.js"></script>		
 	</body>
 </html>
