@@ -49,6 +49,12 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
             key_pressed : false,
             box_navigate_index:0,
         };
+    this.frame_select_state = {
+        active: false,
+        selected_boxes: [],
+        original_colors: [],
+        clipboard: null,
+    };
     this.view_state = {
         lock_obj_track_id : "",
         lock_obj_in_highlight : false,  // focus mode
@@ -2199,6 +2205,85 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
         this.operation_state.key_pressed = true;
 
+        // Ctrl+A: toggle frame select mode (select all boxes in current frame)
+        if (ev.ctrlKey && !ev.shiftKey && (ev.key === 'a' || ev.key === 'A')){
+            ev.preventDefault();
+            this.toggleFrameSelectMode();
+            return;
+        }
+
+        // Ctrl+Shift+C: copy all annotations in current frame
+        if (ev.ctrlKey && ev.shiftKey && (ev.key === 'C' || ev.key === 'c')){
+            ev.preventDefault();
+            this.copyFrameAnnotations();
+            return;
+        }
+
+        // Ctrl+Shift+V: paste annotations to current frame as initial annotations
+        if (ev.ctrlKey && ev.shiftKey && (ev.key === 'V' || ev.key === 'v')){
+            ev.preventDefault();
+            this.pasteFrameAnnotations();
+            return;
+        }
+
+        // In frame select mode, redirect movement/rotation keys to batch operations
+        if (this.frame_select_state.active){
+            const moveStep = this.editorCfg.moveStep || 0.02;
+            const rotateStep = this.editorCfg.rotateStep || 0.01;
+            // Use a larger absolute translation step for the group (in world/lidar coords)
+            const groupMoveStep = 0.1;
+
+            switch (ev.key){
+                case 'w':
+                    this.translateFrameBoxes('x', groupMoveStep);
+                    return;
+                case 's':
+                    if (ev.ctrlKey){
+                        saveWorldList(this.data.worldList);
+                        return;
+                    }
+                    this.translateFrameBoxes('x', -groupMoveStep);
+                    return;
+                case 'a':
+                    this.translateFrameBoxes('y', groupMoveStep);
+                    return;
+                case 'd':
+                    this.translateFrameBoxes('y', -groupMoveStep);
+                    return;
+                case 'q':
+                    this.rotateFrameBoxes(rotateStep);
+                    return;
+                case 'e':
+                    this.rotateFrameBoxes(-rotateStep);
+                    return;
+                case 'Delete':
+                    this.deleteFrameBoxes();
+                    return;
+                case 'Escape':
+                    this.exitFrameSelectMode();
+                    return;
+                case '3':
+                case 'PageUp':
+                    // Exit frame select mode before switching frames (avoid stale references)
+                    this.exitFrameSelectMode();
+                    this.previous_frame();
+                    return;
+                case 'PageDown':
+                case '4':
+                    this.exitFrameSelectMode();
+                    this.next_frame();
+                    return;
+                // For any other keys, exit frame select mode is not needed;
+                // just fall through to normal handling but skip single-box shortcuts
+            }
+            // Ignore other keys while in frame select mode to prevent
+            // accidentally editing an unselected single box.
+            // Still allow Ctrl+S (save) which is caught in the outer switch below.
+            if (!(ev.ctrlKey && (ev.key === 's' || ev.key === 'S'))){
+                return;
+            }
+        }
+
         switch ( ev.key) {
             case '+':
             case '=':
@@ -2355,10 +2440,271 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
                 this.header.updateModifiedStatus();
                 break;
             case 'Escape':
-                if (this.selected_box){
+                if (this.frame_select_state.active){
+                    this.exitFrameSelectMode();
+                }
+                else if (this.selected_box){
                     this.unselectBox(null);
                 }
                 break;
+        }
+    };
+
+    // Frame selection mode functions
+    this.enterFrameSelectMode = function(){
+        if (!this.data.world || !this.data.world.annotation.boxes || this.data.world.annotation.boxes.length === 0){
+            return;
+        }
+
+        // Exit single box selection mode
+        if (this.selected_box){
+            this.unselectBox(null);
+        }
+
+        this.frame_select_state.active = true;
+        this.frame_select_state.selected_boxes = [...this.data.world.annotation.boxes];
+        this.frame_select_state.original_colors = [];
+
+        // Save original colors and highlight all boxes
+        this.frame_select_state.selected_boxes.forEach(box => {
+            this.frame_select_state.original_colors.push({
+                r: box.material.color.r,
+                g: box.material.color.g,
+                b: box.material.color.b,
+                opacity: box.material.opacity
+            });
+            box.material.color.set(0x00ffff); // Cyan color for frame selection
+            box.material.opacity = 1.0;
+        });
+
+        this.render();
+        logger.log(`Frame select mode: ${this.frame_select_state.selected_boxes.length} boxes selected`);
+    };
+
+    this.exitFrameSelectMode = function(){
+        if (!this.frame_select_state.active){
+            return;
+        }
+
+        // Restore original colors
+        this.frame_select_state.selected_boxes.forEach((box, idx) => {
+            if (this.frame_select_state.original_colors[idx]){
+                let origColor = this.frame_select_state.original_colors[idx];
+                box.material.color.setRGB(origColor.r, origColor.g, origColor.b);
+                box.material.opacity = origColor.opacity;
+            }
+        });
+
+        this.frame_select_state.active = false;
+        this.frame_select_state.selected_boxes = [];
+        this.frame_select_state.original_colors = [];
+
+        this.render();
+        logger.log("Frame select mode exited");
+    };
+
+    this.toggleFrameSelectMode = function(){
+        if (this.frame_select_state.active){
+            this.exitFrameSelectMode();
+        } else {
+            this.enterFrameSelectMode();
+        }
+    };
+
+    // Translate all selected boxes in frame select mode (rigid body translation
+    // in ego/lidar coordinates — every box moves by the same delta).
+    this.translateFrameBoxes = function(axis, delta){
+        if (!this.frame_select_state.active || this.frame_select_state.selected_boxes.length === 0){
+            return;
+        }
+
+        // Directly translate in ego/lidar coordinates so the whole frame moves
+        // as a rigid body. Do NOT use boxOp.translate_box here because that
+        // applies the box's own rotation to the delta (box-local coordinates).
+        this.frame_select_state.selected_boxes.forEach(box => {
+            box.position[axis] += delta;
+            // Update float label position for each box
+            this.floatLabelManager.update_position(box, true);
+        });
+
+        this.frame_select_state.selected_boxes.forEach(box => {
+            box.world.annotation.setModified();
+        });
+
+        this.header.updateModifiedStatus();
+        this.render();
+    };
+
+    // Rotate all selected boxes around the ego origin (0,0,0) as a rigid body
+    // (yaw only). Each box's position and yaw are rotated by the same theta.
+    this.rotateFrameBoxes = function(theta){
+        if (!this.frame_select_state.active || this.frame_select_state.selected_boxes.length === 0){
+            return;
+        }
+
+        const cos_theta = Math.cos(theta);
+        const sin_theta = Math.sin(theta);
+
+        // Rigid body rotation around ego (lidar origin): each box's (x,y)
+        // rotates around (0,0), and each box's yaw increments by theta.
+        this.frame_select_state.selected_boxes.forEach(box => {
+            const x = box.position.x;
+            const y = box.position.y;
+            box.position.x = x * cos_theta - y * sin_theta;
+            box.position.y = x * sin_theta + y * cos_theta;
+            box.rotation.z += theta;
+            // Update float label position for each box
+            this.floatLabelManager.update_position(box, true);
+        });
+
+        this.frame_select_state.selected_boxes.forEach(box => {
+            box.world.annotation.setModified();
+        });
+
+        this.header.updateModifiedStatus();
+        this.render();
+    };
+
+    // Delete all selected boxes in frame select mode
+    this.deleteFrameBoxes = function(){
+        if (!this.frame_select_state.active || this.frame_select_state.selected_boxes.length === 0){
+            return;
+        }
+
+        const boxCount = this.frame_select_state.selected_boxes.length;
+        
+        // Make a copy of the list since we'll be modifying the world's box list
+        const boxesToDelete = [...this.frame_select_state.selected_boxes];
+
+        // Exit frame select mode first to clean up state
+        this.exitFrameSelectMode();
+
+        // Delete each box
+        boxesToDelete.forEach(box => {
+            this.do_remove_box(box, false);
+        });
+
+        this.header.updateModifiedStatus();
+        this.render();
+        
+        logger.log(`Deleted ${boxCount} boxes from frame`);
+    };
+
+    // Copy frame annotations to clipboard (including track_id)
+    this.copyFrameAnnotations = function(){
+        if (!this.data.world || !this.data.world.annotation.boxes || this.data.world.annotation.boxes.length === 0){
+            logger.log("No boxes to copy");
+            return;
+        }
+
+        this.frame_select_state.clipboard = this.data.world.annotation.boxes.map(box => {
+            return {
+                position: {x: box.position.x, y: box.position.y, z: box.position.z},
+                scale: {x: box.scale.x, y: box.scale.y, z: box.scale.z},
+                rotation: {x: box.rotation.x, y: box.rotation.y, z: box.rotation.z},
+                obj_type: box.obj_type,
+                obj_track_id: box.obj_track_id,
+                obj_attr: box.obj_attr
+            };
+        });
+
+        logger.log(`Copied ${this.frame_select_state.clipboard.length} boxes to clipboard (track_id included)`);
+    };
+
+    // Paste frame annotations from clipboard. Preserves the original track_id
+    // so users can continue tracking the same objects on the target frame.
+    // If a box with the same track_id already exists on the target frame
+    // (same id + same type), we replace it instead of adding a duplicate — this
+    // keeps the paste idempotent and avoids invalid duplicate ids in one frame.
+    this.pasteFrameAnnotations = function(){
+        if (!this.frame_select_state.clipboard || this.frame_select_state.clipboard.length === 0){
+            logger.log("Clipboard is empty");
+            return;
+        }
+
+        if (!this.data.world){
+            return;
+        }
+
+        // If frame select mode is already active on this frame, exit it first
+        // so the new pasted boxes get proper colors and there is no stale ref.
+        if (this.frame_select_state.active){
+            this.exitFrameSelectMode();
+        }
+
+        const world = this.data.world;
+        let addedBoxes = [];
+
+        this.frame_select_state.clipboard.forEach(clipBox => {
+            // If a box with the same track_id + obj_type already exists, remove it
+            // first so paste effectively overwrites duplicates on this frame.
+            if (clipBox.obj_track_id !== undefined && clipBox.obj_track_id !== null
+                && String(clipBox.obj_track_id).trim() !== "")
+            {
+                const existing = world.annotation.boxes.find(b =>
+                    String(b.obj_track_id).trim() === String(clipBox.obj_track_id).trim()
+                    && b.obj_type === clipBox.obj_type
+                );
+                if (existing){
+                    world.annotation.unload_box(existing);
+                    world.annotation.remove_box(existing);
+                    this.floatLabelManager.remove_box(existing);
+                    this.imageContextManager.boxes_manager.remove_box(existing.obj_local_id);
+                }
+            }
+
+            let newBox = world.annotation.add_box(
+                clipBox.position,
+                clipBox.scale,
+                clipBox.rotation,
+                clipBox.obj_type,
+                clipBox.obj_track_id,  // preserve original track_id
+                clipBox.obj_attr
+            );
+
+            this.floatLabelManager.add_label(newBox);
+            this.imageContextManager.boxes_manager.add_box(newBox);
+
+            // Register the id with the object manager so it shows up in the
+            // clip-wide id list (and so track_id-uniqueness checks work).
+            if (clipBox.obj_track_id !== undefined && clipBox.obj_track_id !== null
+                && String(clipBox.obj_track_id).trim() !== "")
+            {
+                objIdManager.addObject({
+                    category: newBox.obj_type,
+                    id: newBox.obj_track_id,
+                });
+            }
+
+            addedBoxes.push(newBox);
+        });
+
+        world.annotation.setModified();
+        this.header.updateModifiedStatus();
+        this.render();
+
+        logger.log(`Pasted ${addedBoxes.length} boxes from clipboard (track_id preserved)`);
+
+        // Auto-enter frame select mode for the pasted boxes so the user can
+        // immediately move/rotate them as a rigid group.
+        if (addedBoxes.length > 0){
+            this.frame_select_state.active = true;
+            this.frame_select_state.selected_boxes = addedBoxes;
+            this.frame_select_state.original_colors = [];
+
+            addedBoxes.forEach(box => {
+                this.frame_select_state.original_colors.push({
+                    r: box.material.color.r,
+                    g: box.material.color.g,
+                    b: box.material.color.b,
+                    opacity: box.material.opacity
+                });
+                box.material.color.set(0x00ffff);
+                box.material.opacity = 1.0;
+            });
+
+            this.render();
+            logger.log("Frame select mode activated for pasted boxes");
         }
     };
 
@@ -2520,6 +2866,12 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
         logger.log(`load ${sceneName}, ${frame}`);
 
+        // If we are in frame select mode, exit before loading a new frame so we
+        // don't hold stale references to the old world's boxes.
+        if (this.frame_select_state.active){
+            this.exitFrameSelectMode();
+        }
+
         var self=this;
         //stop if current world is not ready!
         if (this.data.world && !this.data.world.preloaded()){
@@ -2645,7 +2997,7 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
             this.imageContextManager.boxes_manager.update_box(box);
 
         this.header.update_box_info(box);
-        //floatLabelManager.update_position(box, false);  don't update position, or the ui is annoying.
+        this.floatLabelManager.update_position(box, true);  // Update label position when box changes
         
         box.world.annotation.setModified();
         
