@@ -852,7 +852,8 @@ class ImageContextManager {
         this.cfg = cfg;
         this.on_img_click = on_img_click;
 
-        this.addImage("", true);
+        // 初始化时不加载auto图像，等待updateCameraList根据相机列表加载left/front/right
+        // this.addImage("", true);
 
 
         this.selectorUi.onmouseenter=function(event){
@@ -933,6 +934,30 @@ class ImageContextManager {
         ui.style.display="none";
 
         this.setDefaultBestCamera(cameras[0]);
+
+        // 主界面初始化时加载left、front、right三路图像
+        // 统一尺寸：width: 15%, height: 20%，水平并排居中，间隔0.5%
+        if (this.images.length === 0) {
+            const defaultCameras = ['left', 'front', 'right'];
+            const positions = [
+                { top: '0%', left: '27%', width: '15%', height: '20%' },   // left
+                { top: '0%', left: '42.5%', width: '15%', height: '20%' },   // front
+                { top: '0%', left: '58%', width: '15%', height: '20%' }    // right
+            ];
+            
+            defaultCameras.forEach((cameraName, index) => {
+                if (cameras.includes(cameraName)) {
+                    let image = this.addImage(cameraName, false);
+                    if (image && positions[index]) {
+                        // 设置图像的位置和大小
+                        image.ui.style.top = positions[index].top;
+                        image.ui.style.left = positions[index].left;
+                        image.ui.style.width = positions[index].width;
+                        image.ui.style.height = positions[index].height;
+                    }
+                }
+            });
+        }
     }
 
     setDefaultBestCamera(c){

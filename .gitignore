@@ -41,6 +41,7 @@ output/
 outputs/
 cache/
 .cache/
+setup/.setup_done
 
 # ==========================================
 # 日志
