@@ -57,6 +57,12 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         original_colors: [],
         clipboard: null,
     };
+    // 删除撤销栈：每一项是一次删除动作的快照，撤销时批量恢复。
+    // 结构: [{ scene, frame, boxes: [ {position, scale, rotation, obj_type, obj_track_id, obj_attr}, ... ] }]
+    // 用栈而非无限历史，避免无边界增长；上限保留 50 步。
+    this.delete_history = [];
+    this.delete_history_limit = 50;
+
     this.view_state = {
         lock_obj_track_id : "",
         lock_obj_in_highlight : false,  // focus mode
@@ -2229,7 +2235,16 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
             return;
         }
 
+        // Ctrl+Z: 撤销上一次删除（单个 box 或 frame 批量删除）
+        // 放在其他键位分发之前，避免和 frame_select_state 里对 'z' 的处理冲突。
+        if (ev.ctrlKey && !ev.shiftKey && (ev.key === 'z' || ev.key === 'Z')){
+            ev.preventDefault();
+            this.undoDelete();
+            return;
+        }
+
         // In frame select mode, redirect movement/rotation keys to batch operations
+
         if (this.frame_select_state.active){
             const moveStep = this.editorCfg.moveStep || 0.02;
             const rotateStep = this.editorCfg.rotateStep || 0.01;
@@ -2630,9 +2645,12 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         }
 
         const boxCount = this.frame_select_state.selected_boxes.length;
-        
+
         // Make a copy of the list since we'll be modifying the world's box list
         const boxesToDelete = [...this.frame_select_state.selected_boxes];
+
+        // 删除前批量快照，作为一次撤销事件推入栈，供 Ctrl+Z 一次性恢复整帧
+        this._pushDeleteHistory(boxesToDelete.map(b => this._snapshotBox(b)));
 
         // Exit frame select mode first to clean up state
         this.exitFrameSelectMode();
@@ -2644,9 +2662,10 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
         this.header.updateModifiedStatus();
         this.render();
-        
+
         logger.log(`Deleted ${boxCount} boxes from frame`);
     };
+
 
     // Copy frame annotations to clipboard (including track_id).
     // 同时记录源 scene/frame，粘贴时用于 odom 位姿对齐（若 odom 可用）。
@@ -3052,6 +3071,116 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
     };
 
 
+    // ============= 删除撤销支持 =============
+    // 把一个 box 序列化为可用于恢复的快照。
+    // 只记录 add_box 需要的字段 + 定位信息（scene/frame），撤销时按此重建 box。
+    this._snapshotBox = function(box){
+        return {
+            scene: box.world.frameInfo.scene,
+            frame: box.world.frameInfo.frame,
+            position: {x: box.position.x, y: box.position.y, z: box.position.z},
+            scale:    {x: box.scale.x,    y: box.scale.y,    z: box.scale.z},
+            rotation: {x: box.rotation.x, y: box.rotation.y, z: box.rotation.z},
+            obj_type: box.obj_type,
+            obj_track_id: box.obj_track_id,
+            obj_attr: box.obj_attr,
+        };
+    };
+
+    // 把一次删除动作（单个或批量）推入撤销栈，超出上限时丢弃最旧记录。
+    this._pushDeleteHistory = function(boxSnapshots){
+        if (!boxSnapshots || boxSnapshots.length === 0) return;
+        this.delete_history.push({
+            timestamp: Date.now(),
+            boxes: boxSnapshots,
+        });
+        while (this.delete_history.length > this.delete_history_limit){
+            this.delete_history.shift();
+        }
+    };
+
+    // Ctrl+Z：撤销上一次删除。
+    // 恢复策略：按快照里的 scene/frame 定位到对应 world；若目标 world 已加载，
+    // 直接调 world.annotation.add_box 重建 box；若不是当前 world，则先切帧再重建。
+    // 为保持简单，跨 world 的撤销一次只处理属于同一 (scene,frame) 的分组，其余
+    // 分组要求用户切到对应帧后再按 Ctrl+Z（栈里会保留下一个尚未撤销的分组）。
+    // 但由于我们的两个删除入口（remove_selected_box、deleteFrameBoxes）都作用于
+    // 当前帧，正常情况下一次撤销就是当前帧的一批 box。
+    this.undoDelete = function(){
+        if (this.delete_history.length === 0){
+            logger.log("Undo: 删除历史为空");
+            return;
+        }
+
+        const entry = this.delete_history.pop();
+        const snapshots = entry.boxes;
+        if (!snapshots || snapshots.length === 0) return;
+
+        // 按 (scene, frame) 分组恢复。绝大多数情况下 snapshots 都是同一 (scene,frame)。
+        const groups = {};
+        snapshots.forEach(s => {
+            const key = s.scene + "#" + s.frame;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(s);
+        });
+
+        // 找到能直接恢复的目标 world（已经加载的）
+        const restoredBoxes = [];
+        Object.values(groups).forEach(group => {
+            const targetScene = group[0].scene;
+            const targetFrame = group[0].frame;
+            // 已加载的 world 优先直接恢复
+            let targetWorld = this.data.worldList.find(w =>
+                w.frameInfo.scene === targetScene && w.frameInfo.frame === targetFrame);
+            if (!targetWorld && this.data.world
+                && this.data.world.frameInfo.scene === targetScene
+                && this.data.world.frameInfo.frame === targetFrame){
+                targetWorld = this.data.world;
+            }
+
+            if (!targetWorld){
+                logger.log(`Undo: 目标帧 ${targetScene}#${targetFrame} 未加载，跳过 ${group.length} 个 box`);
+                return;
+            }
+
+            group.forEach(snap => {
+                let newBox = targetWorld.annotation.add_box(
+                    snap.position, snap.scale, snap.rotation,
+                    snap.obj_type, snap.obj_track_id, snap.obj_attr);
+
+                // 只有当前 world 的 box 需要挂前端 UI（label、图像 box）
+                if (targetWorld === this.data.world){
+                    this.floatLabelManager.add_label(newBox);
+                    this.imageContextManager.boxes_manager.add_box(newBox);
+                    restoredBoxes.push(newBox);
+                }
+
+                if (snap.obj_track_id !== undefined && snap.obj_track_id !== null
+                    && String(snap.obj_track_id).trim() !== "")
+                {
+                    objIdManager.addObject({
+                        category: snap.obj_type,
+                        id: snap.obj_track_id,
+                    });
+                }
+            });
+
+            targetWorld.annotation.setModified();
+        });
+
+        // 恢复后同步一次点云颜色（box 覆盖到的点要按类别色着色）
+        if (this.data.world && this.data.world.lidar
+            && typeof this.data.world.lidar.recolor_all_points === "function"){
+            this.data.world.lidar.recolor_all_points();
+        }
+
+        this.header.updateModifiedStatus();
+        this.render();
+
+        logger.log(`Undo: 已恢复 ${restoredBoxes.length} 个 box（栈剩余 ${this.delete_history.length}）`);
+    };
+    // ============= /删除撤销支持 =============
+
     this.remove_box = function(box, render=true){
         if (box === this.selected_box){
             this.unselectBox(null,true);
@@ -3086,8 +3215,13 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
     };
 
     this.remove_selected_box= function(){
+        // 删除前先快照当前 box，压入撤销栈，供 Ctrl+Z 恢复
+        if (this.selected_box){
+            this._pushDeleteHistory([this._snapshotBox(this.selected_box)]);
+        }
         this.remove_box(this.selected_box);
     };
+
 
     this.do_remove_box = function(box, render=true){
 
