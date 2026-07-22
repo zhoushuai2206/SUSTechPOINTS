@@ -24,6 +24,8 @@ import { MovableView } from './popup_dialog.js';
 import {globalKeyDownManager} from './keydown_manager.js';
 import {vector_range} from "./util.js"
 import { checkScene } from './error_check.js';
+import { OdomManager } from './odom.js';
+
 
 function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
@@ -2590,34 +2592,60 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         logger.log(`Deleted ${boxCount} boxes from frame`);
     };
 
-    // Copy frame annotations to clipboard (including track_id)
+    // Copy frame annotations to clipboard (including track_id).
+    // 同时记录源 scene/frame，粘贴时用于 odom 位姿对齐（若 odom 可用）。
+    // 复制动作会顺便触发 scene 级 odom 数据的懒加载，这样等到粘贴时数据一般已就绪。
     this.copyFrameAnnotations = function(){
         if (!this.data.world || !this.data.world.annotation.boxes || this.data.world.annotation.boxes.length === 0){
             logger.log("No boxes to copy");
             return;
         }
 
-        this.frame_select_state.clipboard = this.data.world.annotation.boxes.map(box => {
-            return {
-                position: {x: box.position.x, y: box.position.y, z: box.position.z},
-                scale: {x: box.scale.x, y: box.scale.y, z: box.scale.z},
-                rotation: {x: box.rotation.x, y: box.rotation.y, z: box.rotation.z},
-                obj_type: box.obj_type,
-                obj_track_id: box.obj_track_id,
-                obj_attr: box.obj_attr
-            };
-        });
+        const srcScene = this.data.world.frameInfo.scene;
+        const srcFrame = this.data.world.frameInfo.frame;
 
-        logger.log(`Copied ${this.frame_select_state.clipboard.length} boxes to clipboard (track_id included)`);
+        this.frame_select_state.clipboard = {
+            srcScene: srcScene,
+            srcFrame: srcFrame,
+            boxes: this.data.world.annotation.boxes.map(box => {
+                return {
+                    position: {x: box.position.x, y: box.position.y, z: box.position.z},
+                    scale: {x: box.scale.x, y: box.scale.y, z: box.scale.z},
+                    rotation: {x: box.rotation.x, y: box.rotation.y, z: box.rotation.z},
+                    obj_type: box.obj_type,
+                    obj_track_id: box.obj_track_id,
+                    obj_attr: box.obj_attr
+                };
+            }),
+        };
+
+        // 提前拉取整段 clip 的 odom，粘贴时通常已经缓存好。
+        // 失败或没 odom 也不影响复制本身。
+        OdomManager.loadScene(srcScene).catch(() => {});
+
+        logger.log(`Copied ${this.frame_select_state.clipboard.boxes.length} boxes to clipboard from ${srcScene}#${srcFrame}`);
     };
+
 
     // Paste frame annotations from clipboard. Preserves the original track_id
     // so users can continue tracking the same objects on the target frame.
     // If a box with the same track_id already exists on the target frame
     // (same id + same type), we replace it instead of adding a duplicate — this
     // keeps the paste idempotent and avoids invalid duplicate ids in one frame.
-    this.pasteFrameAnnotations = function(){
-        if (!this.frame_select_state.clipboard || this.frame_select_state.clipboard.length === 0){
+    //
+    // 关键变化：如果源 clip 和当前 clip 都存在 odom.csv，就先按 frame 时间戳插值
+    // 得到源帧和目标帧的 ego 世界位姿，再把 clipboard 里的 box（源帧 ego 系）通过
+    // T_tgt<-src 变换到目标帧 ego 系，作为粘贴后的初始位姿。用户后续可继续用
+    // frame-select 平移/旋转微调。
+    //
+    // 为避免等待网络阻塞用户，同一 scene 的 odom 已在 copyFrameAnnotations 时被
+    // 预取，通常此刻已缓存。这里再 await 一次 loadScene（内部有缓存），即拿到就
+    // 立刻用；拿不到（如没 odom.csv、或跨 clip 且新 clip 没同步）就退回原逻辑，
+    // 直接用源帧 ego 系坐标粘贴。
+    this.pasteFrameAnnotations = async function(){
+        const clip = this.frame_select_state.clipboard;
+        // 空 / 老格式（历史遗留 array）都判定为空
+        if (!clip || !Array.isArray(clip.boxes) || clip.boxes.length === 0){
             logger.log("Clipboard is empty");
             return;
         }
@@ -2633,9 +2661,59 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         }
 
         const world = this.data.world;
+        const tgtScene = world.frameInfo.scene;
+        const tgtFrame = world.frameInfo.frame;
+
+        // 尝试构造 odom 变换。整个尝试过程出任何问题都退化为"直接粘贴原坐标"。
+        let transformer = null;
+        try {
+            // 只有源和目标是同一个 scene 才有意义做变换：不同 clip 的 odom 坐标系
+            // 起点不同，直接混用会得到错误结果。跨 clip 时直接跳过 odom 变换。
+            if (clip.srcScene && clip.srcScene === tgtScene){
+                // 保证两端 poses 都已加载。同一 scene 只会拉一次。
+                const poses = await OdomManager.loadScene(clip.srcScene);
+                if (poses && poses.length > 0){
+                    const srcPose = OdomManager.getPoseForFrame(clip.srcScene, clip.srcFrame);
+                    const tgtPose = OdomManager.getPoseForFrame(tgtScene, tgtFrame);
+                    if (srcPose && tgtPose){
+                        transformer = OdomManager.makeTransformer(srcPose, tgtPose);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn("[odom-paste] transform build failed, fallback to raw paste", e);
+            transformer = null;
+        }
+
+        if (transformer){
+            const dx = transformer.translation.x, dy = transformer.translation.y;
+            const dyawDeg = (transformer.dyaw * 180 / Math.PI).toFixed(2);
+            logger.log(`Odom-aligned paste: src=${clip.srcScene}#${clip.srcFrame} → tgt=${tgtScene}#${tgtFrame}, `
+                     + `dx=${dx.toFixed(2)}m dy=${dy.toFixed(2)}m dyaw=${dyawDeg}°`);
+        } else if (clip.srcScene !== tgtScene){
+            logger.log(`Paste across scenes (${clip.srcScene} → ${tgtScene}): odom alignment skipped.`);
+        } else {
+            logger.log("Odom data unavailable; paste with raw coordinates.");
+        }
+
         let addedBoxes = [];
 
-        this.frame_select_state.clipboard.forEach(clipBox => {
+        clip.boxes.forEach(clipBox => {
+            // 计算目标帧坐标：有 transformer 就用它变换，否则原样
+            let tgtPos, tgtRotZ;
+            if (transformer){
+                tgtPos = transformer.applyPosition(clipBox.position);
+                tgtRotZ = transformer.applyYawZ(clipBox.rotation.z || 0);
+            } else {
+                tgtPos = { x: clipBox.position.x, y: clipBox.position.y, z: clipBox.position.z };
+                tgtRotZ = clipBox.rotation.z || 0;
+            }
+            const tgtRotation = {
+                x: clipBox.rotation.x || 0,
+                y: clipBox.rotation.y || 0,
+                z: tgtRotZ,
+            };
+
             // If a box with the same track_id + obj_type already exists, remove it
             // first so paste effectively overwrites duplicates on this frame.
             if (clipBox.obj_track_id !== undefined && clipBox.obj_track_id !== null
@@ -2654,9 +2732,9 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
             }
 
             let newBox = world.annotation.add_box(
-                clipBox.position,
+                tgtPos,
                 clipBox.scale,
-                clipBox.rotation,
+                tgtRotation,
                 clipBox.obj_type,
                 clipBox.obj_track_id,  // preserve original track_id
                 clipBox.obj_attr
@@ -2707,6 +2785,7 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
             logger.log("Frame select mode activated for pasted boxes");
         }
     };
+
 
 
 

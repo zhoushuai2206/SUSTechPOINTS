@@ -334,6 +334,79 @@ def read_ego_pose(scene, frame):
     return None
 
 
+# 缓存已解析过的 odom 文件，避免每次前端请求都做一次 CSV parse。
+# key: scene, value: (mtime, poses_list)
+_odom_cache = {}
+
+
+def read_odom(scene):
+    """读取 clip 下的 odom/odom.csv，返回按 header_t_ns 升序排列的位姿列表。
+
+    每条记录为 dict：`{"t_ns", "x", "y", "z", "yaw"}`。yaw 由四元数在 z 轴分量
+    换算得到（本项目 odom 在平面上，只有绕 z 的偏航）。frame 名形如
+    `"<sec>_<nsec>"`，其时间戳与 odom 的 `header_t_ns` 同源，因此前端可以直接把
+    frame 名转成 ns 后在 poses 里做二分插值。
+
+    找不到 odom 文件时返回 None（不是抛错），前端据此可以选择跳过位姿变换。
+    """
+    import csv
+    import math
+
+    odom_file = os.path.join(root_dir, scene, "odom", "odom.csv")
+    if not os.path.isfile(odom_file):
+        return None
+
+    try:
+        mtime = os.path.getmtime(odom_file)
+    except OSError:
+        mtime = None
+
+    cached = _odom_cache.get(scene)
+    if cached is not None and cached[0] == mtime:
+        return cached[1]
+
+    poses = []
+    try:
+        with open(odom_file, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    t_ns = int(row["header_t_ns"])
+                    x = float(row["pose.pose.position.x"])
+                    y = float(row["pose.pose.position.y"])
+                    z = float(row["pose.pose.position.z"])
+                    qx = float(row["pose.pose.orientation.x"])
+                    qy = float(row["pose.pose.orientation.y"])
+                    qz = float(row["pose.pose.orientation.z"])
+                    qw = float(row["pose.pose.orientation.w"])
+                except (KeyError, ValueError, TypeError):
+                    continue
+
+                # 四元数 -> 绕 z 轴 yaw（ZYX 约定下）。本数据 qx=qy≈0，公式退化为
+                # 2*atan2(qz, qw)，但完整公式对更一般的场景也安全。
+                yaw = math.atan2(
+                    2.0 * (qw * qz + qx * qy),
+                    1.0 - 2.0 * (qy * qy + qz * qz),
+                )
+                poses.append({
+                    "t_ns": t_ns,
+                    "x": x,
+                    "y": y,
+                    "z": z,
+                    "yaw": yaw,
+                })
+    except Exception as e:
+        print(f"[scene_reader] read_odom failed for scene={scene}: {e}")
+        return None
+
+    # 极少数情况下 CSV 不是严格递增，前端插值需要保证有序
+    poses.sort(key=lambda p: p["t_ns"])
+
+    _odom_cache[scene] = (mtime, poses)
+    return poses
+
+
+
 def save_annotations(scene, frame, anno):
     label_dir = os.path.join(root_dir, scene, "label")
     os.makedirs(label_dir, exist_ok=True)

@@ -132,6 +132,12 @@ class Root:
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
+    def load_odom(self, scene):
+        return scene_reader.read_odom(scene)
+
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
     def loadworldlist(self):
         rawbody = cherrypy.request.body.readline().decode('UTF-8')
         worldlist = json.loads(rawbody)
