@@ -1939,15 +1939,16 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
         }
         else {
-            //reselect the same box
-            if (this.viewManager.mainView.transform_control.visible){
-                this.change_transform_control_view();
-            }
-            else{
-                //select me the second time
-                //object.add(this.viewManager.mainView.transform_control);
-                this.viewManager.mainView.transform_control.attach( object );
-            }            
+            // 注释掉左键再次选中box时出现的旋转/平移/拉升图标(TransformControls gizmo)相关功能
+            // //reselect the same box
+            // if (this.viewManager.mainView.transform_control.visible){
+            //     this.change_transform_control_view();
+            // }
+            // else{
+            //     //select me the second time
+            //     //object.add(this.viewManager.mainView.transform_control);
+            //     this.viewManager.mainView.transform_control.attach( object );
+            // }
         }
 
         this.render();
