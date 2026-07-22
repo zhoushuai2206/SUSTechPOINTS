@@ -46,11 +46,28 @@ Hint:
           del: delete the box
           ctrl+d: delete the box
           a,s,d,w,r,f,g: save as operations in top-view.
+          z: move box up along Z axis
+          x: move box down along Z axis
           v: enter batch-edit mode
 
      when transform control in perspective view is active:
           z/x/c: toggle x/y/z asix handle
           v: switch among dimension/rotation/position
+
+     frame select mode (Ctrl+A to toggle):
+          all boxes in the current frame are highlighted (cyan) and treated as
+          a rigid group. The following shortcuts operate on the whole group:
+              w/s: translate group along X axis (forward / backward)
+              a/d: translate group along Y axis (left / right)
+              z:   translate group up along Z axis
+              x:   translate group down along Z axis
+              q/e: rotate group around ego origin (yaw)
+              Delete: delete all boxes in the frame
+              Escape / Ctrl+A: exit frame select mode
+              3/PageUp, 4/PageDown: exit and go to previous/next frame
+              Ctrl+S: save
+          Ctrl+Shift+C / Ctrl+Shift+V: copy / paste annotations of the whole
+          frame (paste uses odom for pose alignment when available).
 ```
 
 ### sub-view (projective view)

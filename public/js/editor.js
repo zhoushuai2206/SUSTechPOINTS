@@ -2258,6 +2258,14 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
                 case 'e':
                     this.rotateFrameBoxes(-rotateStep);
                     return;
+                case 'z':
+                    // Z-axis up (rigid body translation for the whole frame)
+                    this.translateFrameBoxes('z', groupMoveStep);
+                    return;
+                case 'x':
+                    // Z-axis down (rigid body translation for the whole frame)
+                    this.translateFrameBoxes('z', -groupMoveStep);
+                    return;
                 case 'Delete':
                     this.deleteFrameBoxes();
                     return;
@@ -2334,11 +2342,31 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
                 self.on_box_changed(this.selected_box);
                 break;
             */
-            case 'z': // X
-                this.viewManager.mainView.transform_control.showX = ! this.viewManager.mainView.transform_control.showX;
+            case 'z':
+                // When transform_control is visible (3D edit mode), keep the
+                // original behaviour: toggle X axis handle.
+                // Otherwise, if a box is selected, translate it up along Z.
+                if (this.viewManager.mainView.transform_control.visible){
+                    this.viewManager.mainView.transform_control.showX = ! this.viewManager.mainView.transform_control.showX;
+                }
+                else if (this.selected_box){
+                    let v = Math.max(this.editorCfg.moveStep * this.selected_box.scale.z, 0.02);
+                    this.boxOp.translate_box(this.selected_box, 'z', v);
+                    this.on_box_changed(this.selected_box);
+                }
                 break;
-            case 'x': // Y
-                this.viewManager.mainView.transform_control.showY = ! this.viewManager.mainView.transform_control.showY;
+            case 'x':
+                // When transform_control is visible (3D edit mode), keep the
+                // original behaviour: toggle Y axis handle.
+                // Otherwise, if a box is selected, translate it down along Z.
+                if (this.viewManager.mainView.transform_control.visible){
+                    this.viewManager.mainView.transform_control.showY = ! this.viewManager.mainView.transform_control.showY;
+                }
+                else if (this.selected_box){
+                    let v = Math.max(this.editorCfg.moveStep * this.selected_box.scale.z, 0.02);
+                    this.boxOp.translate_box(this.selected_box, 'z', -v);
+                    this.on_box_changed(this.selected_box);
+                }
                 break;
             case 'c': // Z
                 if (ev.ctrlKey){
