@@ -67,12 +67,14 @@ class ObjectCategory
     }
 
     get_color_by_category(category){
+        // 使用位运算取通道值，保证结果与 THREE.Color(hex) 完全一致，
+        // 从而让"被 box 框住的点云颜色"与 box 边线颜色严格相同。
         let target_color_hex = parseInt("0x"+this.get_obj_cfg_by_type(category).color.slice(1));
 
         return {
-            x: (target_color_hex/256/256)/255.0,
-            y: (target_color_hex/256 % 256)/255.0,
-            z: (target_color_hex % 256)/255.0,
+            x: ((target_color_hex >> 16) & 0xff) / 255.0,
+            y: ((target_color_hex >> 8)  & 0xff) / 255.0,
+            z: ( target_color_hex        & 0xff) / 255.0,
         };
     }
 

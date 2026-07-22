@@ -12,8 +12,10 @@ class Config{
 
     coordinateSystem = 'utm';
 
-    point_size = 1;
-    point_brightness = 0.6;
+    // 主界面默认点云大小 (按用户当前页面设定值)
+    point_size = 1.15;
+    // 主界面默认点云亮度 (按用户当前页面设定值；超过 1 的部分会被 shader clamp 到最大亮度)
+    point_brightness = 1.6;
     box_opacity = 1;
     show_background = true;
     color_obj = "category";

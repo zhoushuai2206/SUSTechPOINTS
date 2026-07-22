@@ -2513,6 +2513,27 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         }
     };
 
+    // 整个 frame 做刚体平移/旋转会持续改变每个 box 覆盖到的点云，需要按类别色
+    // 重新给这些 box 内的点云着色。为避免用户按住方向键时每帧都遍历所有点，做
+    // 一个简单的 debounce：连按时合并到最后一次，只等空闲 ~60ms 再刷新。
+    this._scheduleFrameBoxRecolor = function(){
+        if (!this.data || !this.data.world || !this.data.world.lidar) return;
+        if (typeof this.data.world.lidar.recolor_all_points !== "function") return;
+
+        const world = this.data.world;
+        if (this._frameRecolorTimer){
+            clearTimeout(this._frameRecolorTimer);
+        }
+        this._frameRecolorTimer = setTimeout(() => {
+            this._frameRecolorTimer = null;
+            // world 可能在等待期间被切换，重新校验一下
+            if (this.data && this.data.world === world && world.lidar){
+                world.lidar.recolor_all_points();
+                this.render();
+            }
+        }, 60);
+    };
+
     // Translate all selected boxes in frame select mode (rigid body translation
     // in ego/lidar coordinates — every box moves by the same delta).
     this.translateFrameBoxes = function(axis, delta){
@@ -2535,6 +2556,9 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
         this.header.updateModifiedStatus();
         this.render();
+
+        // Box 已挪到新位置，落在框内的点云也跟着变了 —— 按 box 类别色重新着色。
+        this._scheduleFrameBoxRecolor();
     };
 
     // Rotate all selected boxes around the ego origin (0,0,0) as a rigid body
@@ -2565,6 +2589,9 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
         this.header.updateModifiedStatus();
         this.render();
+
+        // Box 已旋转到新位置，同样需要按 box 类别色刷新点云颜色。
+        this._scheduleFrameBoxRecolor();
     };
 
     // Delete all selected boxes in frame select mode
@@ -2759,6 +2786,15 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
         world.annotation.setModified();
         this.header.updateModifiedStatus();
+
+        // 粘贴 + odom 对齐可能改变了 box 的位置/朝向，因此这些 box 现在覆盖到的点云
+        // 需要按 box 类别色重新着色（走 lidar.color_objects()，使用 get_color_by_category
+        // 而不是当前 material.color，所以即使进入 frame select 后 box 边线变青，
+        // 点云依然显示为类别色）。
+        if (world.lidar && typeof world.lidar.recolor_all_points === "function"){
+            world.lidar.recolor_all_points();
+        }
+
         this.render();
 
         logger.log(`Pasted ${addedBoxes.length} boxes from clipboard (track_id preserved)`);
