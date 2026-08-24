@@ -35,7 +35,11 @@ function FrameInfo(data, sceneMeta, sceneName, frame){
     this.get_pcd_path = function(){
             // 兼容字段：lidar_dir 优先（新数据 rslidar_points），缺省回退到 "lidar"
             var lidarDir = this.sceneMeta.lidar_dir || "lidar";
-            return 'data/'+ this.scene + "/" + lidarDir + "/" + this.frame + this.sceneMeta.lidar_ext;
+            // PCD 会被 Classify Mode 等流程原地覆盖；再加上历史上 /data 曾经未禁用
+            // 浏览器缓存，导致旧响应（缺失 `classify` 字段）会被反复复用。这里给
+            // URL 追加一个每次不同的 query 参数，保证 XHR 永远命中最新的服务端文件，
+            // 避免解析时因为看到过时 header 而报 "PCD header has no `classify` field"。
+            return 'data/'+ this.scene + "/" + lidarDir + "/" + this.frame + this.sceneMeta.lidar_ext + '?_=' + Date.now();
         };
     this.get_radar_path = function(name){
         return `data/${this.scene}/radar/${name}/${this.frame}${this.sceneMeta.radar_ext}`;

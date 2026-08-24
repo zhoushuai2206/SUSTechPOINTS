@@ -777,7 +777,8 @@
 								<div class="cfg-widget-group">
 									<select type="checkbox" id="cfg-color-points-select" class="cfg-widget">
 										<option value="mono" selected>mono</option>
-										<option value="intensity" selected>by intensity</option>									
+										<option value="intensity" selected>by intensity</option>
+										<option value="classify">by classify</option>
 									</select>
 								</div>
 							</div>
@@ -906,6 +907,13 @@
 										</div>							
 
 									</div>
+								</div>
+							</div>
+
+							<div class="menu-nonclickable-item" id="cfg-classify-mode">
+								<span>Classify Mode</span>
+								<div class="cfg-widget-group">
+									<input type="checkbox" id="cfg-classify-mode-checkbox" class="cfg-widget">
 								</div>
 							</div>
 
@@ -1044,7 +1052,32 @@
 
 				<div id="move-handle-wrapper">
 				</div>
-				
+
+				<div id="classify-panel" class="non-selectable" style="display:none;">
+					<div id="classify-panel-header">点云分类
+						<span id="classify-close-btn" title="关闭">×</span>
+					</div>
+					<div id="classify-panel-body">
+						<div class="classify-row">
+							<label><input type="checkbox" id="classify-select-points"> 选择点(Shift+左键画多边形)</label>
+							<button id="classify-select-all-btn" class="classify-select-all-btn" title="选中当前帧所有点">全选</button>
+						</div>
+						<div class="classify-row">
+							<span>已选中: <span id="classify-selected-count">0</span> 个点</span>
+						</div>
+						<div class="classify-row">
+							<label>类别</label>
+							<div id="classify-class-list"></div>
+						</div>
+						<div class="classify-row classify-actions">
+							<button id="classify-apply-btn">应用</button>
+							<button id="classify-undo-btn">撤销</button>
+							<button id="classify-clear-btn">清空</button>
+							<button id="classify-save-btn">保存到PCD</button>
+						</div>
+						<div id="classify-hint">Shift + 左键点击 绘制多边形；双击/回车 完成；Esc 取消。</div>
+					</div>
+				</div>
 
 		</template>
 		<template id="box-editor-ui-template"><div id="sub-views">

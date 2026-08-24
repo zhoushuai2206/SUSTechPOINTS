@@ -174,6 +174,93 @@ def read_pcd(path, want_fields=('x', 'y', 'z', 'intensity')) -> tuple[np.ndarray
     return np.concatenate(cols, axis=1).astype(np.float32, copy=False), actual
 
 
+def write_pcd_with_classify(path, classify, out_path=None):
+    """把 `classify` (uint8) 值写回 PCD 文件。
+
+    本项目的所有 PCD 都带有 `classify` 字段（TYPE U / SIZE 1 / COUNT 1）且为
+    `DATA binary`，因此这里做的是**原地字节改写**：header 原文一字节不动，
+    只把每条 record 里 classify 所在的那 1 个字节替换掉。这样 x/y/z/intensity
+    等字段的原始字节完全保留，不存在任何精度损失，也不会因为重建 header 而
+    丢掉 VIEWPOINT 之类的原始信息。
+
+    若文件不满足上述前提（非 binary、没有 classify 字段、classify 不是 U1），
+    直接抛错，而不是退化成重编码路径 —— 静默改写文件格式比失败更危险。
+
+    参数:
+        path: 原始 PCD 路径。
+        classify: 长度为 POINTS 的一维数组/列表，元素取值 0-255。
+        out_path: 输出路径。默认原地覆盖 (path)。
+
+    返回: 实际写入的路径 (str)。
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise PcdReadError(f"file not found: {path}")
+
+    classify = np.asarray(classify, dtype=np.uint8).reshape(-1)
+
+    with open(path, 'rb') as fp:
+        # 逐行读 header，读到 DATA 行为止；此时 fp 正好停在数据段开头。
+        header_lines = []
+        while True:
+            line = fp.readline()
+            if not line:
+                raise PcdReadError("unexpected EOF while parsing header")
+            header_lines.append(line)
+            if line.decode('ascii', errors='replace').strip().upper().startswith('DATA'):
+                break
+        header_bytes = b''.join(header_lines)
+        data_bytes = fp.read()
+
+    header = {}
+    for raw in header_lines:
+        text = raw.decode('ascii', errors='replace').strip()
+        if not text or text.startswith('#'):
+            continue
+        parts = text.split()
+        header[parts[0].upper()] = parts[1:]
+
+    data_mode = header.get('DATA', ['ascii'])[0].lower()
+    if data_mode != 'binary':
+        raise PcdReadError(
+            f"only 'DATA binary' is supported for classify write, got '{data_mode}': {path}")
+
+    fields = list(header.get('FIELDS', []))
+    sizes = list(header.get('SIZE', []))
+    types = list(header.get('TYPE', []))
+    counts = list(header.get('COUNT', ['1'] * len(fields)))
+    if 'classify' not in fields:
+        raise PcdReadError(f"no 'classify' field in header: {path}")
+    idx = fields.index('classify')
+    if (types[idx].upper(), int(sizes[idx]), int(counts[idx])) != ('U', 1, 1):
+        raise PcdReadError(
+            f"'classify' must be TYPE U / SIZE 1 / COUNT 1, got "
+            f"{types[idx]}{sizes[idx]} count={counts[idx]}: {path}")
+
+    points_num = int(header.get('POINTS', header.get('WIDTH', ['0']))[0])
+    if classify.size != points_num:
+        raise PcdReadError(f"classify length {classify.size} != POINTS {points_num}")
+
+    layout, record_size = _build_layout(fields, sizes, types, counts)
+    classify_offset = next(off for name, _sub, off, _cnt in layout if name == 'classify')
+
+    expected = points_num * record_size
+    if len(data_bytes) < expected:
+        raise PcdReadError(
+            f"binary data truncated: need {expected} bytes, got {len(data_bytes)}: {path}")
+
+    # 只改 classify 那一列，其余字节（含 expected 之后的尾部填充）原样保留。
+    buf = bytearray(data_bytes)
+    view = np.frombuffer(buf, dtype=np.uint8, count=expected).reshape(points_num, record_size)
+    view[:, classify_offset] = classify
+
+    target = Path(out_path) if out_path else path
+    with open(target, 'wb') as fp:
+        fp.write(header_bytes)
+        fp.write(buf)
+    return str(target)
+
+
 if __name__ == '__main__':
     import sys
     p, f = read_pcd(sys.argv[1])

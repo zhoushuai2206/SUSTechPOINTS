@@ -16,6 +16,7 @@ import cherrypy
 from jinja2 import Environment, FileSystemLoader
 
 from algos import pre_annotate
+from algos import pcd_io
 from tools import check_labels as check
 from tools import scene_reader
 
@@ -119,6 +120,44 @@ class Root:
             # 详细错误只在服务器日志里，返回给前端的是简明信息
             print(f"[main] auto_annotate error: {e}")
             return {"error": f"auto_annotate failed: {e}"}
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def save_classify_pcd(self):
+        """接收前端提交的每点 classify 分类，写回到对应 PCD 文件。
+
+        请求体 JSON: { scene, frame, classify: [int, ...], timestamp? }
+        - 会先解析 scene/frame -> data/<scene>/<lidar_dir>/<frame><lidar_ext>
+        - 在原 PCD 里注入/覆盖 uint8 的 classify 字段。
+        """
+        rawbody = cherrypy.request.body.read().decode('UTF-8')
+        try:
+            payload = json.loads(rawbody)
+        except Exception as e:
+            cherrypy.response.status = 400
+            return {"status": "error", "error": f"invalid json: {e}"}
+
+        scene = payload.get("scene")
+        frame = payload.get("frame")
+        classify = payload.get("classify")
+        if not scene or not frame or classify is None:
+            cherrypy.response.status = 400
+            return {"status": "error",
+                    "error": "fields 'scene', 'frame', 'classify' required"}
+
+        pcd_path = self._resolve_pcd_path(scene, frame)
+        if not os.path.isfile(pcd_path):
+            cherrypy.response.status = 404
+            return {"status": "error", "error": f"pcd not found: {pcd_path}"}
+
+        try:
+            out = pcd_io.write_pcd_with_classify(pcd_path, classify)
+        except Exception as e:
+            cherrypy.response.status = 500
+            print(f"[main] save_classify_pcd error: {e}")
+            return {"status": "error", "error": f"save failed: {e}"}
+
+        return {"status": "ok", "path": out}
 
     @cherrypy.expose
     @cherrypy.tools.json_out()

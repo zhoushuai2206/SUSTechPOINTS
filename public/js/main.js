@@ -10,6 +10,45 @@ window.pointsGlobalConfig = pointsGlobalConfig;
 pointsGlobalConfig.load();
 
 
+// Preload classify_config.json so that "by classify" color mode works
+// independently of activating the classify annotation mode.
+// Populates window.classifyClassMap early during page bootstrap.
+window.classifyClassMapReady = (async () => {
+  try {
+    const resp = await fetch('/static/classify_config.json');
+
+    if (!resp.ok) return;
+    const cfg = await resp.json();
+    if (Array.isArray(cfg.classify_classes)) {
+      const classMap = {};
+      cfg.classify_classes.forEach(cls => {
+        if (Array.isArray(cls.color) && cls.color.length >= 3) {
+          classMap[cls.value] = [cls.color[0], cls.color[1], cls.color[2]];
+        }
+      });
+      window.classifyClassMap = classMap;
+
+      // If the user already had "by classify" selected (persisted config),
+      // refresh coloring across loaded worlds now that the palette is ready.
+      if (window.editor && pointsGlobalConfig.color_points === 'classify'){
+        try {
+          window.editor.data.worldList.forEach(w => {
+            if (w.lidar && w.lidar.color_points){
+              w.lidar.color_points();
+              w.lidar.update_points_color();
+            }
+          });
+          window.editor.render();
+        } catch(e) { /* editor not fully ready yet, ignore */ }
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to preload classify_config.json:', e);
+  }
+})();
+
+
+
 document.documentElement.className="theme-"+pointsGlobalConfig.theme;
 
 

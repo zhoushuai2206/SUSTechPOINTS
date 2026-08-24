@@ -1,0 +1,52 @@
+{
+"classify_classes": [
+    {
+      "value": 0,
+      "name": "未分类",
+      "color": [1.0, 1.0, 1.0],
+      "description": "未分类点，默认白色"
+    },
+    {
+      "value": 1,
+      "name": "地面",
+      "color": [0.0, 1.0, 0.0],
+      "description": "地面点，显示为绿色"
+    },
+    {
+      "value": 2,
+      "name": "障碍物",
+      "color": [1.0, 0.0, 0.0],
+      "description": "障碍物，显示为红色"
+    },
+    {
+      "value": 3,
+      "name": "大车",
+      "color": [0.0, 0.0, 1.0],
+      "description": "大车，显示为蓝色"
+    },
+    {
+      "value": 4,
+      "name": "小车",
+      "color": [0.0, 1.0, 1.0],
+      "description": "小车，显示为青色"
+    },
+    {
+      "value": 5,
+      "name": "VRU",
+      "color": [1.0, 0.0, 1.0],
+      "description": "VRU，显示为紫色"
+    },
+    {
+      "value": 6,
+      "name": "行人",
+      "color": [1.0, 0.5, 0.0],
+      "description": "行人，显示为橙色"
+    }
+  ],
+  "default_classify": 0,
+  "selection_settings": {
+    "default_brush_size": 10,
+    "selection_color": [1.0, 1.0, 0.0],
+    "selection_opacity": 0.5
+  }
+}

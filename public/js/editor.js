@@ -25,6 +25,7 @@ import {globalKeyDownManager} from './keydown_manager.js';
 import {vector_range} from "./util.js"
 import { checkScene } from './error_check.js';
 import { OdomManager } from './odom.js';
+import { ClassifyAnnotator } from './classify_annotator.js';
 
 
 function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
@@ -2995,7 +2996,22 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         // preload after the first world loaded
         // otherwise the loading of the first world would be too slow
         this.data.preloadScene(world.frameInfo.scene, world);
+
+        // 点云分类标注：为当前 world.lidar 创建 ClassifyAnnotator，
+        // 供 Classify Mode 复选框激活；工厂内部会自动 deactivate 前一个实例。
+        try {
+            if (world && world.lidar && this.viewManager && this.viewManager.mainView){
+                world.lidar.classifyAnnotator = new ClassifyAnnotator(
+                    world.lidar,
+                    this.viewManager.mainView,
+                    this.data.cfg
+                );
+            }
+        } catch (e) {
+            console.warn('[ClassifyAnnotator] init failed:', e);
+        }
     };
+
     this.moveAxisHelper = function(world) {
         world.webglGroup.add(this.axis);
     };

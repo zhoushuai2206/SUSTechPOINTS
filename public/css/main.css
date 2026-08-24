@@ -1069,5 +1069,298 @@ td {
 	left: 0%;
 	height: 100%;
 	width: 100%;
-	z-index: 10;	
+	z-index: 10;
 }
+
+/* ==============================
+   Classify (点云分类) Panel
+   ============================== */
+#classify-panel {
+	position: absolute;
+	top: 60px;
+	right: 20px;
+	width: 260px;
+	background-color: var(--window-background-color);
+	color: var(--font-color);
+	border: 1px solid var(--widget-color);
+	border-radius: 4px;
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+	z-index: 20;
+	font-size: 12px;
+	user-select: none;
+}
+
+#classify-panel-header {
+	padding: 6px 10px;
+	background-color: var(--widget-background-color);
+	border-bottom: 1px solid var(--widget-color);
+	cursor: move;
+	font-weight: bold;
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+#classify-close-btn {
+	cursor: pointer;
+	padding: 0 6px;
+	font-size: 16px;
+	line-height: 16px;
+}
+
+#classify-close-btn:hover {
+	color: var(--highlight-color);
+}
+
+#classify-panel-body {
+	padding: 8px 10px;
+}
+
+.classify-row {
+	margin: 6px 0;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+
+.classify-row label {
+	cursor: pointer;
+}
+
+#classify-class-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	width: 100%;
+}
+
+.classify-class-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 6px;
+	background-color: var(--widget-background-color);
+	border: 1px solid transparent;
+	border-radius: 3px;
+	cursor: pointer;
+}
+
+.classify-class-item:hover {
+	border-color: var(--widget-color);
+}
+
+.classify-class-item.selected {
+	border-color: var(--highlight-color);
+	background-color: var(--highlight-background-transparent-color);
+}
+
+.classify-color-swatch {
+	display: inline-block;
+	width: 12px;
+	height: 12px;
+	border-radius: 2px;
+	border: 1px solid rgba(0, 0, 0, 0.3);
+	vertical-align: middle;
+}
+
+.classify-class-name {
+	vertical-align: middle;
+}
+
+.classify-actions {
+	justify-content: flex-start;
+}
+
+.classify-actions button {
+	background-color: var(--widget-background-color);
+	color: var(--font-color);
+	border: 1px solid var(--widget-color);
+	border-radius: 3px;
+	padding: 3px 8px;
+	cursor: pointer;
+	font-size: 12px;
+}
+
+.classify-actions button:hover {
+	background-color: var(--highlight-background-color);
+}
+
+.classify-select-all-btn {
+	margin-left: auto;
+	background-color: var(--widget-background-color);
+	color: var(--font-color);
+	border: 1px solid var(--widget-color);
+	border-radius: 3px;
+	padding: 2px 8px;
+	cursor: pointer;
+	font-size: 12px;
+}
+
+.classify-select-all-btn:hover {
+	background-color: var(--highlight-background-color);
+}
+
+#classify-hint {
+	margin-top: 8px;
+	color: var(--widget-color);
+	font-size: 11px;
+	line-height: 1.4;
+}
+
+#classify-selected-count {
+	color: var(--highlight-color);
+	font-weight: bold;
+}
+
+/* ==========================================================================
+   Classify Custom Dialog (Alert / Confirm)
+   ========================================================================== */
+.classify-dialog-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	width: 100vw;
+	height: 100vh;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 100000;
+	animation: classifyDialogFadeIn 0.15s ease-out;
+}
+
+@keyframes classifyDialogFadeIn {
+	from { opacity: 0; }
+	to   { opacity: 1; }
+}
+
+.classify-dialog-box {
+	min-width: 320px;
+	max-width: 480px;
+	background: var(--window-background-color, #222);
+	color: var(--font-color, #fff);
+	border: 1px solid #555;
+	border-radius: 8px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+	overflow: hidden;
+	animation: classifyDialogSlideIn 0.18s ease-out;
+}
+
+@keyframes classifyDialogSlideIn {
+	from { transform: translateY(-12px); opacity: 0; }
+	to   { transform: translateY(0);      opacity: 1; }
+}
+
+.classify-dialog-header {
+	padding: 12px 18px;
+	font-size: 14px;
+	font-weight: bold;
+	background: var(--widget-background-color, #333);
+	border-bottom: 1px solid #444;
+}
+
+.classify-dialog-body {
+	padding: 18px;
+	font-size: 13px;
+	line-height: 1.6;
+	word-break: break-word;
+	white-space: pre-wrap;
+}
+
+.classify-dialog-footer {
+	padding: 10px 14px;
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	background: rgba(0, 0, 0, 0.15);
+	border-top: 1px solid #444;
+}
+
+.classify-dialog-btn {
+	min-width: 72px;
+	padding: 6px 16px;
+	border-radius: 4px;
+	border: 1px solid #555;
+	background: var(--widget-background-color, #444);
+	color: var(--font-color, #fff);
+	font-size: 13px;
+	cursor: pointer;
+	transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.classify-dialog-btn:hover {
+	background: var(--highlight-background-color, #666);
+}
+
+.classify-dialog-btn:focus {
+	outline: 2px solid var(--highlight-color, #ffcc00);
+	outline-offset: 1px;
+}
+
+.classify-dialog-btn-ok {
+	background: #2f7cd6;
+	border-color: #2f7cd6;
+	color: #fff;
+}
+
+.classify-dialog-btn-ok:hover {
+	background: #4090e8;
+	border-color: #4090e8;
+}
+
+.classify-dialog-btn-cancel {
+	/* uses default styles */
+}
+
+/* Variant accents on the header */
+.classify-dialog-success .classify-dialog-header { color: #6dd694; }
+.classify-dialog-warn    .classify-dialog-header { color: #f0c060; }
+.classify-dialog-error   .classify-dialog-header { color: #ff6b6b; }
+.classify-dialog-confirm .classify-dialog-header { color: #f0c060; }
+
+/* ==========================================================================
+   Classify Toast Notifications
+   ========================================================================== */
+#classify-toast-container {
+	position: fixed;
+	top: 24px;
+	left: 50%;
+	transform: translateX(-50%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	z-index: 100001;
+	pointer-events: none;
+}
+
+.classify-toast {
+	pointer-events: auto;
+	min-width: 220px;
+	max-width: 480px;
+	padding: 10px 18px;
+	border-radius: 6px;
+	background: rgba(40, 40, 40, 0.95);
+	color: #fff;
+	font-size: 13px;
+	line-height: 1.4;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+	opacity: 0;
+	transform: translateY(-8px);
+	transition: opacity 0.2s ease, transform 0.2s ease;
+	cursor: pointer;
+	border-left: 3px solid #888;
+}
+
+.classify-toast-visible {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+.classify-toast-success { border-left-color: #6dd694; }
+.classify-toast-warn    { border-left-color: #f0c060; }
+.classify-toast-error   { border-left-color: #ff6b6b; }
+.classify-toast-info    { border-left-color: #4090e8; }

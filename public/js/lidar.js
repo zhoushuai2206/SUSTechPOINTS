@@ -16,12 +16,85 @@ function Lidar(sceneMeta, world, frameInfo){
     this.points = null;
     this.points_load_time = 0;
 
+    // Write classify-class colors into `color` (a flat rgb array or typed array)
+    // for every point of `pcd`. Every PCD carries a full-length `classify`
+    // array (PCDLoader enforces the field), so the value is read directly.
+    // Returns false when the classify palette is not available yet, so callers
+    // can retry once it has been loaded.
+    // `indices` is optional: when given, only those point indices are recolored.
+    this.applyClassifyColors = function(color, pcd, indices){
+        let classifyMap = window.classifyClassMap;
+        let brightness = this.data.cfg.point_brightness;
+        let defaultColor = [brightness, brightness, brightness];
+        let pointCount = pcd.position.length / 3;
+
+        let setOne = (i)=>{
+            let cls = pcd.classify[i];
+            let c = (classifyMap && classifyMap[cls]) || defaultColor;
+            color[i*3]   = c[0];
+            color[i*3+1] = c[1];
+            color[i*3+2] = c[2];
+        };
+
+        if (indices){
+            indices.forEach(setOne);
+        }
+        else {
+            for (let i = 0; i < pointCount; ++i) setOne(i);
+        }
+
+        return !!classifyMap;
+    };
+
+    // Intensity is stored either normalized (0~1) or as raw byte values
+    // (0~255, e.g. the PCDs under data/ which declare `intensity` as F32 but
+    // fill it with 0~255). Detect the scale once per pcd so one coloring
+    // formula fits both.
+    this.getIntensityScale = function(pcd){
+        if (pcd._intensityScale === undefined){
+            let max = 0;
+            for (let i = 0; i < pcd.intensity.length; ++i){
+                if (pcd.intensity[i] > max)
+                    max = pcd.intensity[i];
+            }
+            pcd._intensityScale = (max > 1.001) ? (1.0/255.0) : 1.0;
+        }
+        return pcd._intensityScale;
+    };
+
+    // `indices` is optional: when given, only those point indices are recolored.
+    this.applyIntensityColors = function(color, pcd, indices){
+        let scale = this.getIntensityScale(pcd);
+
+        let setOne = (i)=>{
+            let intensity = pcd.intensity[i] * scale * 8;
+
+            if (intensity > 1)
+                intensity = 1.0;
+
+            color[i*3]   = intensity;
+            color[i*3+1] = intensity;
+            color[i*3+2] = 1 - intensity;
+        };
+
+        if (indices){
+            indices.forEach(setOne);
+        }
+        else {
+            for (let i = 0; i < pcd.intensity.length; ++i) setOne(i);
+        }
+    };
+
+
+
     // 按 Z 值范围过滤点云：只保留 min_z <= z <= max_z 的点
     this.filter_points_by_z_range = function(pcd, max_z, min_z){
         let position = [];
         let color = [];
         let normal = [];
         let intensity = [];
+        let classify = [];
+        let srcIndex = [];
         //3, 3, 3, 1
 
         if (max_z === undefined || max_z === null || isNaN(max_z))
@@ -29,12 +102,16 @@ function Lidar(sceneMeta, world, frameInfo){
         if (min_z === undefined || min_z === null || isNaN(min_z))
             min_z = -Infinity;
 
+        // `srcIndex` is always present and aligned with the points (PCDLoader
+        // builds it for every point it keeps), so filtering it needs no guard.
         for (let i = 0; i < pcd.position.length/3; i++){
             let pz = pcd.position[i*3+2];
             if (pz <= max_z && pz >= min_z){
                 position.push(pcd.position[i*3+0]);
                 position.push(pcd.position[i*3+1]);
                 position.push(pcd.position[i*3+2]);
+
+                srcIndex.push(pcd.srcIndex[i]);
                 
                 if (pcd.color.length>0){
                     color.push(pcd.color[i*3+0]);
@@ -51,6 +128,9 @@ function Lidar(sceneMeta, world, frameInfo){
                 if (pcd.intensity){
                     intensity.push(pcd.intensity[i]);
                 }
+
+                // `classify` is always present and full-length (PCDLoader enforces it).
+                classify.push(pcd.classify[i]);
             }
         }
 
@@ -58,6 +138,8 @@ function Lidar(sceneMeta, world, frameInfo){
         pcd.intensity = intensity;
         pcd.color = color;
         pcd.normal = normal;
+        pcd.classify = classify;
+        pcd.srcIndex = srcIndex;
 
         return pcd;
     };
@@ -137,24 +219,19 @@ function Lidar(sceneMeta, world, frameInfo){
                     // if enabled intensity we color points by intensity.
                     if (_self.data.cfg.color_points=="intensity" && pcd.intensity.length>0){
                         // map intensity to color
-                        for (var i =0; i< pcd.intensity.length; ++i){
-                            let intensity = pcd.intensity[i];
-                            intensity *= 8;
-                            
-                            if (intensity > 1)
-                                intensity = 1.0;
-                            
-                            
-                            //color.push( 2 * Math.abs(0.5-intensity));
-                            
-                            color[i*3] =  intensity;
-                            color[i*3+1] = intensity;
-                            color[i*3+2] = 1 - intensity; 
-                        }
+                        _self.applyIntensityColors(color, pcd);
+                    }
+
+                    else if (_self.data.cfg.color_points=="classify"){
+                        // color points by classify class at load time, otherwise
+                        // freshly loaded worlds stay mono until color_points() is
+                        // triggered by some other event.
+                        _self.applyClassifyColors(color, pcd);
                     }
 
                     // save color, in case color needs to be restored.
                     pcd.color = color;
+
                 }
 
                 geometry.setAttribute( 'color', new THREE.Float32BufferAttribute(color, 3 ) );
@@ -195,6 +272,21 @@ function Lidar(sceneMeta, world, frameInfo){
                 _self.build_points_index();
                 _self.points_load_time = new Date().getTime();
 
+                // The classify palette is fetched asynchronously at bootstrap.
+                // If it wasn't ready while building colors above, recolor once
+                // it arrives, so ground/other classes show their real colors.
+                if (_self.data.cfg.color_points=="classify" && !window.classifyClassMap && window.classifyClassMapReady){
+                    window.classifyClassMapReady.then(()=>{
+                        if (_self.points && _self.pcd){
+                            _self.color_points();
+                            _self.update_points_color();
+                            if (window.editor && window.editor.render)
+                                window.editor.render();
+                        }
+                    });
+                }
+
+
                 console.log(_self.points_load_time, _self.frameInfo.scene, _self.frameInfo.frame, "loaded pionts ", _self.points_load_time - _self.create_time, "ms");
 
                 _self._afterPreload();
@@ -206,9 +298,9 @@ function Lidar(sceneMeta, world, frameInfo){
             },
 
             // on error
-            function(){
+            function(err){
                 //error
-                console.log("load pcd failed.");
+                console.error("[lidar] load pcd failed:", _self.frameInfo.get_pcd_path(), err && (err.stack || err.message || err));
                 _self._afterPreload();
             },
 
@@ -317,21 +409,14 @@ function Lidar(sceneMeta, world, frameInfo){
         // step 1, color all points.
         if (this.data.cfg.color_points=="intensity" && this.pcd.intensity.length>0){
             // by intensity
-            for (var i =0; i< this.pcd.intensity.length; ++i){
-                let intensity = this.pcd.intensity[i];
-                intensity *= 8;
-                
-                if (intensity > 1)
-                    intensity = 1.0;
-                
-                
-                //color.push( 2 * Math.abs(0.5-intensity));
-                
-                color[i*3] =  intensity;
-                color[i*3+1] = intensity;
-                color[i*3+2] = 1 - intensity; 
-            }
+            this.applyIntensityColors(color, this.pcd);
         }
+
+        else if (this.data.cfg.color_points=="classify"){
+            // by classify - use classify class colors from classify config
+            this.applyClassifyColors(color, this.pcd);
+        }
+
         else
         {
             // mono color
@@ -345,6 +430,7 @@ function Lidar(sceneMeta, world, frameInfo){
         
         //this.update_points_color();
     };
+
 
     this.transformPointsByEgoPose = function(points){
 
@@ -1180,23 +1266,18 @@ function Lidar(sceneMeta, world, frameInfo){
     this.reset_box_points_color = function(box){
         let color = this.points.geometry.getAttribute("color").array;
         let indices = this._get_points_index_of_box(this.points, box, 1.0);
-        if (this.data.cfg.color_points=="intensity")
-        {        
-            
-            indices.forEach((i)=>{
-                let intensity = this.pcd.intensity[i];
-                intensity *= 8;
-                
-                if (intensity > 1)
-                    intensity = 1.0;
-
-                color[i*3] =  intensity;
-                color[i*3+1] = intensity;
-                color[i*3+2] = 1 - intensity; 
-            });
-                
+        if (this.data.cfg.color_points=="intensity" && this.pcd.intensity.length>0)
+        {
+            this.applyIntensityColors(color, this.pcd, indices);
+        }
+        else if (this.data.cfg.color_points=="classify")
+        {
+            // keep classify colors when a box is deselected / moved away,
+            // otherwise the points it covered would fall back to mono.
+            this.applyClassifyColors(color, this.pcd, indices);
         }
         else
+
         {
             indices.forEach((i)=>{
                 color[i*3] =  this.data.cfg.point_brightness;
@@ -1208,6 +1289,13 @@ function Lidar(sceneMeta, world, frameInfo){
 
 
     this.set_box_points_color=function(box, target_color){
+        // 当 PCD 加载失败（例如 lidar 目录/文件缺失）时 this.points 会是 null，
+        // 上游 color_objects → go 依然会遍历所有 box 调到这里。以前会直接抛
+        // "Cannot read properties of null" 挡住后续 UI 初始化，用户看到的现象
+        // 就是「点云和图像都没显示」。这里静默跳过 —— 真正的加载失败已经在
+        // preload 的 onError 里打印过了，颜色只是无从谈起。
+        if (!this.points || !this.points.geometry)
+            return;
         //var pos = this.points.geometry.getAttribute("position");
         var color = this.points.geometry.getAttribute("color");
 
