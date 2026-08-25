@@ -75,6 +75,7 @@ package-lock.json
 #  （data/example 为示例数据保留，请按需调整）
 # ==========================================
 data/*
+data (copy)/*
 !data/example/
 *.pcd.bin
 *.bin.tmp

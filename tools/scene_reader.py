@@ -18,11 +18,22 @@ CCRS clip 目录布局（`data/<category>/<clip_name>/...`）：
 
 import json
 import os
+import re
 
 try:
     import numpy as _np
 except ImportError:  # numpy 是项目必备依赖，这里做保护性回退
     _np = None
+
+# 帧文件名通常是 "<index>_<timestamp>.pcd" 形式，index 位数不一致（如 753 vs 1001）。
+# 直接用字典序会把 "1001_" 排在 "753_" 之前，与实际帧序不符。
+# 这里用自然排序：把文件名切成 数字/非数字 段，数字段按 int 比较。
+_NATURAL_SORT_RE = re.compile(r"(\d+)")
+
+
+def _natural_sort_key(name):
+    """把文件名拆成 [str, int, str, int, ...] 用作排序键，实现按数值大小的自然排序。"""
+    return [int(part) if part.isdigit() else part for part in _NATURAL_SORT_RE.split(name)]
 
 # scene_reader.py 位于 tools/ 目录下，data/ 在项目根目录（parent of tools/）。
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -262,7 +273,7 @@ def get_one_scene(s):
 
     lidar_path = os.path.join(scene_dir, LIDAR_DIR)
     if os.path.isdir(lidar_path):
-        for f in sorted(os.listdir(lidar_path)):
+        for f in sorted(os.listdir(lidar_path), key=_natural_sort_key):
             stem, ext = os.path.splitext(f)
             if not stem or not ext:
                 continue
