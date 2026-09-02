@@ -34,7 +34,7 @@
 ||Ctrl+z|撤销上一次删除|支持单个box删除和frame模式批量删除，最多回退50步|
 ||Ctrl+a|进入/退出整帧选择模式(Frame Select)||
 ||Ctrl+Shift+c|复制当前帧所有标注到剪贴板||
-||Ctrl+Shift+v|将剪贴板标注粘贴到当前帧|支持基于odom的位姿对齐|
+||Ctrl+Shift+v|将剪贴板标注粘贴到当前帧|支持基于odom的位姿对齐；只复制目标帧中不存在的box（基于ID判断），不覆盖已存在的box|
 
 
 

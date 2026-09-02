@@ -67,7 +67,9 @@ Hint:
               3/PageUp, 4/PageDown: exit and go to previous/next frame
               Ctrl+S: save
           Ctrl+Shift+C / Ctrl+Shift+V: copy / paste annotations of the whole
-          frame (paste uses odom for pose alignment when available).
+          frame (paste uses odom for pose alignment when available; only
+          copies boxes not present in the target frame based on track ID,
+          existing boxes are not overwritten).
 ```
 
 ### sub-view (projective view)

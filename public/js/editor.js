@@ -2706,8 +2706,8 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
     // Paste frame annotations from clipboard. Preserves the original track_id
     // so users can continue tracking the same objects on the target frame.
     // If a box with the same track_id already exists on the target frame
-    // (same id + same type), we replace it instead of adding a duplicate — this
-    // keeps the paste idempotent and avoids invalid duplicate ids in one frame.
+    // (same id + same type), we skip it instead of overwriting — this allows
+    // users to copy only missing boxes without affecting existing annotations.
     //
     // 关键变化：如果源 clip 和当前 clip 都存在 odom.csv，就先按 frame 时间戳插值
     // 得到源帧和目标帧的 ego 世界位姿，再把 clipboard 里的 box（源帧 ego 系）通过
@@ -2773,6 +2773,7 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         }
 
         let addedBoxes = [];
+        let skippedCount = 0;
 
         clip.boxes.forEach(clipBox => {
             // 计算目标帧坐标：有 transformer 就用它变换，否则原样
@@ -2790,8 +2791,9 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
                 z: tgtRotZ,
             };
 
-            // If a box with the same track_id + obj_type already exists, remove it
-            // first so paste effectively overwrites duplicates on this frame.
+            // Check if a box with the same track_id + obj_type already exists.
+            // If it exists, skip this box (don't overwrite existing boxes).
+            // Only paste boxes that don't exist in the target frame.
             if (clipBox.obj_track_id !== undefined && clipBox.obj_track_id !== null
                 && String(clipBox.obj_track_id).trim() !== "")
             {
@@ -2800,10 +2802,9 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
                     && b.obj_type === clipBox.obj_type
                 );
                 if (existing){
-                    world.annotation.unload_box(existing);
-                    world.annotation.remove_box(existing);
-                    this.floatLabelManager.remove_box(existing);
-                    this.imageContextManager.boxes_manager.remove_box(existing.obj_local_id);
+                    // Box already exists, skip it
+                    skippedCount++;
+                    return;
                 }
             }
 
@@ -2846,7 +2847,7 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
 
         this.render();
 
-        logger.log(`Pasted ${addedBoxes.length} boxes from clipboard (track_id preserved)`);
+        logger.log(`Pasted ${addedBoxes.length} boxes from clipboard (track_id preserved, ${skippedCount} existing boxes skipped)`);
 
         // Auto-enter frame select mode for the pasted boxes so the user can
         // immediately move/rotate them as a rigid group.
