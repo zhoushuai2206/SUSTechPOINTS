@@ -1,0 +1,9 @@
+{
+  "label_version": ["unknown", "1.0.0", "1.1.0", "2.0.0"],
+  "sensor": ["unknown", "lidar", "camera", "lidar_camera"],
+  "lidar": ["unknown", "robsense_helios_32"],
+  "camera": ["unknown", "basler_ace"],
+  "city": ["unknown", "nanjing", "shanghai", "beijing"],
+  "facility": ["unknown","factory","parking", "airport", "office", "hospital"],
+  "status": ["unknown", "manual", "auto"]
+}

@@ -26,6 +26,7 @@ import {vector_range} from "./util.js"
 import { checkScene } from './error_check.js';
 import { OdomManager } from './odom.js';
 import { ClassifyAnnotator } from './classify_annotator.js';
+import { MetaInfoEditor } from './metainfo_editor.js';
 
 
 function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
@@ -93,6 +94,8 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
         this.playControl = new PlayControl(this.data);
 
         this.configUi = new ConfigUi(editorUi.querySelector("#config-button"), editorUi.querySelector("#config-wrapper"), this);
+
+        this.metaInfoEditor = new MetaInfoEditor(editorUi.querySelector("#btn-metainfo"), this.data, this);
 
         this.header = new Header(editorUi.querySelector("#header"), this.data, this.editorCfg,
             (e)=>{

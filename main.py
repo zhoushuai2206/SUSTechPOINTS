@@ -161,6 +161,39 @@ class Root:
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
+    def save_metainfo(self):
+        """保存 meta_info.json 到指定 scene 目录"""
+        rawbody = cherrypy.request.body.read().decode('UTF-8')
+        try:
+            payload = json.loads(rawbody)
+        except Exception as e:
+            cherrypy.response.status = 400
+            return {"status": "error", "error": f"invalid json: {e}"}
+
+        scene = payload.get("scene")
+        meta_info = payload.get("meta_info")
+        
+        if not scene or meta_info is None:
+            cherrypy.response.status = 400
+            return {"status": "error", "error": "fields 'scene' and 'meta_info' required"}
+
+        meta_info_path = os.path.join("./data", scene, "meta_info.json")
+        
+        try:
+            # 确保目录存在
+            os.makedirs(os.path.dirname(meta_info_path), exist_ok=True)
+            
+            with open(meta_info_path, 'w') as f:
+                json.dump(meta_info, f, indent=4, sort_keys=True)
+            
+            return {"status": "ok", "path": meta_info_path}
+        except Exception as e:
+            cherrypy.response.status = 500
+            print(f"[main] save_metainfo error: {e}")
+            return {"status": "error", "error": f"save failed: {e}"}
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
     def load_annotation(self, scene, frame):
         return scene_reader.read_annotations(scene, frame)
 

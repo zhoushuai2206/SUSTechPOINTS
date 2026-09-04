@@ -146,6 +146,14 @@ canvas {
 	display: inline-block;	
 }
 
+#btn-metainfo {
+	display: inline-block;
+	margin-left: 4px;
+	margin-right: 4px;
+	vertical-align: middle;
+	cursor: pointer;
+}
+
 #camera-selector {
 	position: relative;	
 	padding-right: 5px;
