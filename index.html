@@ -338,9 +338,13 @@
 								</g></svg>
 							</div>
 							<div id="auto-annotate-submenu">
-								<div class="menu-item" id="cm-auto-annotate-detect" title="跑 CenterPoint 生成候选框，覆盖当前帧标签并保存">
+								<div class="menu-item" id="cm-auto-annotate-detect" title="调用本地 BEVFusion ONNX 生成候选框，覆盖当前帧标签并保存">
 									<div class="menu-item-icon"></div>
 									<div class="menu-item-text">Detect</div>
+								</div>
+								<div class="menu-item" id="cm-auto-annotate-clip" title="对当前 clip 的所有帧依次做自动标注，覆盖 label/*.json 并刷新已加载帧">
+									<div class="menu-item-icon"></div>
+									<div class="menu-item-text">Detect Clip</div>
 								</div>
 								<div class="menu-item" id="cm-auto-annotate-id" title="保留当前帧合理 id，重新分配非法/未赋值的 id（从 1 起递增）">
 									<div class="menu-item-icon"></div>

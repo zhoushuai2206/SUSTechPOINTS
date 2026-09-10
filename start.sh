@@ -13,17 +13,16 @@ if [ -z "${BASH_VERSION:-}" ]; then
 fi
 #
 # 功能：
-#   1. 首次启动 / 依赖缺失时，自动调用 setup_env.sh 装齐 CenterPoint 全栈到 conda env
-#   2. 激活 conda env `annotate`（可通过 $SUSTECH_CONDA_ENV 覆盖）
-#   3. 启动 CherryPy 服务（main.py）
+#   1. 激活 conda env `bevfusion`（可通过 $SUSTECH_CONDA_ENV 覆盖）；
+#      本地 BEVFusion ONNX 自动标注复用该环境，无需额外安装。
+#   2. 启动 CherryPy 服务（main.py）
 #
 # 用法：
 #   bash start.sh              前台启动，Ctrl+C 停止
 #   bash start.sh -d           后台启动，日志写入 server.log
 #   bash start.sh --stop       停止后台进程
 #   bash start.sh --status     查看后台进程状态
-#   bash start.sh --skip-setup 跳过自动 setup（假定环境已就绪）
-#   bash start.sh --env myenv  自定义 conda env 名
+#   bash start.sh --env myenv  自定义 conda env 名（默认 bevfusion）
 #   bash start.sh --help
 # =============================================================================
 
@@ -51,11 +50,11 @@ SUSTechPOINTS 启动脚本
     bash start.sh -d           后台启动，日志写入 server.log
     bash start.sh --stop       停止后台进程
     bash start.sh --status     查看后台进程状态
-    bash start.sh --skip-setup 跳过自动 setup（假定环境已就绪）
-    bash start.sh --env NAME   指定 conda env 名（默认 annotate）
+    bash start.sh --env NAME   指定 conda env 名（默认 bevfusion）
     bash start.sh --help       查看帮助
 
-首次运行会自动调用 setup_env.sh 装齐 CenterPoint 全栈（cuda-toolkit + torch + spconv + OpenPCDet + 权重）到独立的 conda env。
+自动标注依赖 conda env `bevfusion`（已装好 onnxruntime/numpy），
+运行时会加载 algos/models/model.onnx 完成 CCRS 单帧 / 整 clip 推理。
 EOF
 }
 
@@ -63,15 +62,13 @@ EOF
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 cd "$SCRIPT_DIR"
 
-ENV_NAME="${SUSTECH_CONDA_ENV:-annotate}"
+# 本地 BEVFusion ONNX 自动标注依赖已有的 bevfusion 环境。
+ENV_NAME="${SUSTECH_CONDA_ENV:-bevfusion}"
 ENTRY="main.py"
 CONF="server/server.conf"
 LOG_FILE="server/server.log"
 PID_FILE="server/.server.pid"
-STAMP_FILE="setup/.setup_done"
-SETUP_SCRIPT="setup/setup_env.sh"
-WEIGHT_FILE="algos/models/centerpoint_pp.pth"
-PCDET_DIR="algos/third_party/OpenPCDet"
+MODEL_FILE="algos/models/model.onnx"
 HOST="127.0.0.1"
 PORT="8081"
 
@@ -87,7 +84,6 @@ fi
 # ---------- 参数解析 ----------
 ACTION="run"
 DAEMON=0
-SKIP_SETUP=0
 args=("$@")
 i=0
 while [ $i -lt ${#args[@]} ]; do
@@ -96,7 +92,6 @@ while [ $i -lt ${#args[@]} ]; do
         -d|--daemon)     DAEMON=1 ;;
         --stop)          ACTION="stop" ;;
         --status)        ACTION="status" ;;
-        --skip-setup)    SKIP_SETUP=1 ;;
         --env)
             i=$((i+1))
             ENV_NAME="${args[$i]}"
@@ -165,33 +160,13 @@ env_exists() {
     conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"
 }
 
-# ---------- 首次启动 / 依赖缺失时自动 setup ----------
-# 注意：权重缺失不再触发重新 setup（避免每次都重下依赖），只警告一下。
-# 权重的下载/更新流程独立于环境本身。
-need_setup=0
 if ! env_exists; then
-    log_warn "conda env '$ENV_NAME' 不存在"
-    need_setup=1
-elif [ ! -f "$STAMP_FILE" ]; then
-    log_warn "$STAMP_FILE 缺失，视为首次启动"
-    need_setup=1
-elif [ ! -d "$PCDET_DIR" ]; then
-    log_warn "OpenPCDet 目录缺失: $PCDET_DIR"
-    need_setup=1
+    log_error "conda env '$ENV_NAME' 不存在。请先手动创建（例如复用 BEVFusion 项目的 bevfusion env），或用 --env 指定其他 env。"
+    exit 1
 fi
 
-if [ "$need_setup" = "1" ]; then
-    if [ "$SKIP_SETUP" = "1" ]; then
-        log_error "环境检测未通过，且指定了 --skip-setup。请先手动执行： bash $SETUP_SCRIPT"
-        exit 1
-    fi
-    if [ ! -f "$SETUP_SCRIPT" ]; then
-        log_error "找不到 $SETUP_SCRIPT，无法自动初始化环境"
-        exit 1
-    fi
-    log_info "首次启动检测：自动运行 $SETUP_SCRIPT --env $ENV_NAME ..."
-    bash "$SETUP_SCRIPT" --env "$ENV_NAME"
-    log_ok "环境初始化完成"
+if [ ! -f "$MODEL_FILE" ]; then
+    log_warn "找不到模型文件 $MODEL_FILE。/auto_annotate 会返回错误，直到把 ONNX 放到该路径。"
 fi
 
 # ---------- 激活 env ----------

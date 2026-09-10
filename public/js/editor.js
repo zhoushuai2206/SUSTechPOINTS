@@ -14,7 +14,7 @@ import {AutoAdjust} from "./auto-adjust.js";
 import {PlayControl} from "./play.js";
 import {reloadWorldList, saveWorldList} from "./save.js";
 import {logger, create_logger} from "./log.js";
-import {autoAnnotate} from "./auto_annotate.js";
+import {autoAnnotate, autoAnnotateScene} from "./auto_annotate.js";
 import {Calib} from "./calib.js";
 import {Trajectory} from "./trajectory.js";
 import { ContextMenu } from './context_menu.js';
@@ -647,13 +647,38 @@ function Editor(editorUi, wrapperUi, editorCfg, data, name="editor"){
             break;
         case 'cm-auto-annotate-detect':
             {
-                // 主视图右键 Auto Annotate → Detect：对当前帧点云调 CenterPoint，
-                // 结果覆盖当前帧标签、保存到磁盘、刷新前端。
+                // 主视图右键 Auto Annotate → Detect：对当前帧点云调用本地 ONNX，
+                // 后端会同时把结果写到 label/<frame>.json（含 score 等原始字段），
+                // 前端只用同一份返回值刷新 WebGL 中的 box。
+                // 不再串一次 saveWorldList，否则 toBoxAnnotations 会丢掉 score。
                 let curWorld = this.data.world;
                 if (!curWorld) break;
                 autoAnnotate(curWorld, () => {
                     this.on_load_world_finished(curWorld);
-                    saveWorldList([curWorld]);
+                });
+            }
+            break;
+
+        case 'cm-auto-annotate-clip':
+            {
+                // 主视图右键 Auto Annotate → Detect Clip：
+                // 后端串行推理整个 clip 并写盘；完成后把已加载帧重新拉一遍标注。
+                let curWorld = this.data.world;
+                if (!curWorld) break;
+                const sceneName = curWorld.frameInfo.scene;
+                if (!confirm(`对整个 clip 【${sceneName}】 全部帧执行自动标注？现有 label 将被覆盖。`)) break;
+                autoAnnotateScene(sceneName, (payload) => {
+                    (this.data.worldList || []).forEach(w => {
+                        if (w.frameInfo.scene === sceneName && w.annotation) {
+                            w.annotation.reloadAnnotation(() => this.on_load_world_finished(w));
+                        }
+                    });
+                    if (payload && payload.frames) {
+                        console.log(`[auto-annotate-clip] scene=${sceneName}, frames=${payload.total_frames}`);
+                    }
+                }, (status, text) => {
+                    console.error(`[auto-annotate-clip] status=${status}`, text);
+                    alert(`Clip 自动标注失败: HTTP ${status}`);
                 });
             }
             break;

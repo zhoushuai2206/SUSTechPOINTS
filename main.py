@@ -107,19 +107,82 @@ class Root:
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
-    def auto_annotate(self, scene, frame):
+    def auto_annotate(self, scene, frame, save="1"):
+        """对单帧点云跑本地 ONNX 自动标注。
+
+        参数:
+            scene: 目标 clip 路径（例如 ``multi_frame/2026_05_27-10_31_31``）。
+            frame: 帧名（不含扩展名）。
+            save:  "1" 表示直接覆盖 ``label/<frame>.json``；"0" 只返回结果。
+
+        返回: box 列表（前端 `reapplyAnnotation` 可直接消费）。
+        """
         print("auto annotate", scene, frame)
         pcd_path = self._resolve_pcd_path(scene, frame)
         if not os.path.isfile(pcd_path):
             cherrypy.response.status = 404
             return {"error": f"pcd not found: {pcd_path}"}
         try:
-            return pre_annotate.annotate_file(pcd_path)
+            boxes = pre_annotate.predict_frame_boxes(pcd_path)
         except Exception as e:
             cherrypy.response.status = 500
             # 详细错误只在服务器日志里，返回给前端的是简明信息
             print(f"[main] auto_annotate error: {e}")
             return {"error": f"auto_annotate failed: {e}"}
+
+        if save == "1":
+            label_dir = os.path.join("./data", scene, "label")
+            os.makedirs(label_dir, exist_ok=True)
+            label_path = os.path.join(label_dir, frame + ".json")
+            try:
+                with open(label_path, "w", encoding="utf-8") as f:
+                    json.dump(boxes, f, indent=2, sort_keys=True)
+            except Exception as e:  # noqa: BLE001
+                print(f"[main] auto_annotate save error: {e}")
+        return boxes
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def auto_annotate_scene(self, scene, save="1"):
+        """对整个 clip 依次跑自动标注。
+
+        参数:
+            scene: 目标 clip 路径（含 category 前缀）。
+            save:  "1" 表示覆盖 label/*.json；"0" 表示只返回结果不落盘。
+        返回: { status, scene, frames: [{frame, count, error?}] }
+        """
+        meta = scene_reader.get_one_scene(scene) or {}
+        frames = meta.get("frames") or []
+        if not frames:
+            cherrypy.response.status = 404
+            return {"status": "error", "error": f"scene has no frames: {scene}"}
+
+        lidar_dir = meta.get("lidar_dir") or "lidar_center"
+        lidar_ext = meta.get("lidar_ext") or ".pcd"
+        label_dir = os.path.join("./data", scene, "label")
+        if save == "1":
+            os.makedirs(label_dir, exist_ok=True)
+
+        results = []
+        for frame in frames:
+            pcd_path = os.path.join("./data", scene, lidar_dir, frame + lidar_ext)
+            if not os.path.isfile(pcd_path):
+                results.append({"frame": frame, "count": 0,
+                                "error": f"pcd not found: {pcd_path}"})
+                continue
+            try:
+                boxes = pre_annotate.predict_frame_boxes(pcd_path)
+            except Exception as e:  # noqa: BLE001
+                print(f"[main] auto_annotate_scene {frame} error: {e}")
+                results.append({"frame": frame, "count": 0, "error": str(e)})
+                continue
+            if save == "1":
+                with open(os.path.join(label_dir, frame + ".json"), "w") as f:
+                    json.dump(boxes, f, indent=2, sort_keys=True)
+            results.append({"frame": frame, "count": len(boxes)})
+
+        return {"status": "ok", "scene": scene, "frames": results,
+                "total_frames": len(frames)}
 
     @cherrypy.expose
     @cherrypy.tools.json_out()

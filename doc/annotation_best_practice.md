@@ -103,7 +103,7 @@ bash setup_env.sh --cuda 12.1 --force
 | traffic_cone | Cone |
 | barrier | （不映射，原样透传为 `barrier`，标注员在前端手动改类别或删除） |
 
-`ForkLift` 是本项目独有类别，CenterPoint（nuScenes 训练）不会输出，需要标注员在前端手动新建。前端 `guess_obj_type_by_dimension` 会再依据尺寸做一次兜底猜测。**候选框只是种子，方向和尺寸仍需手工过一遍**，尤其是行人/骑行者以及远端遮挡目标。
+`ForkLift` 是本项目独有类别，需要标注员在前端手动新建。当前本地 CCRS lidar-only ONNX 模型只训练了 `car` 一类，自动检测结果会保留后端返回的 `Car`，不会再按尺寸猜成 `Motorcycle` / `Bicycle`。**候选框只是种子，方向和尺寸仍需手工过一遍**，尤其是远端遮挡目标。
 
 想批量给整个 clip 预刷，直接在批量编辑（Batch Edit）里跑一次 `Auto`——它会对 M 标记帧逐帧调用同一后端。也可以在每一关键帧上依次右键 `Auto Annotate → Detect` 逐帧跑，得到干净的检测种子后再进 Batch Edit 做插值。若 CenterPoint 推理耗时不理想，可在 `algos/detector_config.json` 里把 `score_thresh` 从 0.3 调高到 0.4~0.5 减少后处理，或换 `device: "cpu"` 用于无 GPU 机器（速度会掉到秒级/帧）。
 
